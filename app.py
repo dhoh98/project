@@ -97,7 +97,7 @@ def auth_page():
         choice = st.radio("choice", ["로그인", "회원가입"], horizontal=True, label_visibility="collapsed")
         
         if choice == "로그인":
-            st.markdown("<h1>📊 로그인</h1>", unsafe_allow_html=True)
+            st.markdown("<h2>📊 로그인</h2>", unsafe_allow_html=True)
             username = st.text_input("아이디", key="login_user", placeholder="아이디")
             password = st.text_input("비밀번호", type="password", key="login_pass", placeholder="비밀번호")
             
@@ -122,7 +122,7 @@ def auth_page():
                         st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
         elif choice == "회원가입":
-            st.markdown("<h1>📝 회원가입</h1>", unsafe_allow_html=True)
+            st.markdown("<h2>📝 회원가입</h2>", unsafe_allow_html=True)
             new_username = st.text_input("사용할 아이디", key="signup_user", placeholder="아이디")
             new_password = st.text_input("사용할 비밀번호", type="password", key="signup_pass", placeholder="비밀번호")
             confirm_password = st.text_input("비밀번호 확인", type="password", key="signup_confirm", placeholder="비밀번호 확인")
@@ -207,7 +207,7 @@ def survey_page():
         if st.button("🎯 진단 결과 보기", type="primary", use_container_width=True):
             if validate_answers():
                 st.session_state.survey_completed = True
-                st.switch_page("pages/03_result.py")
+                st.switch_page("pages/02_analyzing.py")
             else:
                 st.error(f"⚠️ {len(st.session_state.validation_errors)}개의 문항에 답변이 필요합니다!")
                 st.rerun()
