@@ -97,7 +97,7 @@ def auth_page():
         choice = st.radio("choice", ["로그인", "회원가입"], horizontal=True, label_visibility="collapsed")
         
         if choice == "로그인":
-            st.markdown("<h1>📊 부실하체트레이너</h1>", unsafe_allow_html=True)
+            st.markdown("<h1>📊 로그인</h1>", unsafe_allow_html=True)
             username = st.text_input("아이디", key="login_user", placeholder="아이디")
             password = st.text_input("비밀번호", type="password", key="login_pass", placeholder="비밀번호")
             
