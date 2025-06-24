@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIOT GAMES - 로그인</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #3c1053, #ad1457, #8e24aa);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            min-height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"><defs><radialGradient id="smoke" cx="50%" cy="50%" r="50%"><stop offset="0%" style="stop-color:%23ffffff;stop-opacity:0.1"/><stop offset="100%" style="stop-color:%23000000;stop-opacity:0.3"/></radialGradient></defs><circle cx="200" cy="150" r="80" fill="url(%23smoke)"/><circle cx="800" cy="200" r="120" fill="url(%23smoke)"/><circle cx="400" cy="400" r="100" fill="url(%23smoke)"/><circle cx="1000" cy="600" r="90" fill="url(%23smoke)"/></svg>') no-repeat center center;
+            background-size: cover;
+            opacity: 0.3;
+            animation: floatSmoke 20s ease-in-out infinite;
+        }
+
+        @keyframes floatSmoke {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(1deg); }
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+
+        .left-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            color: #f0e6d2;
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 40px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .logo::before {
+            content: "🎮";
+            margin-right: 10px;
+        }
+
+        .warning {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 30px;
+            color: #ffc107;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .warning::before {
+            content: "⚠️";
+        }
+
+        .login-tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: #c89b3c;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .tab.active {
+            background: #c89b3c;
+            color: #1e2328;
+        }
+
+        .tab:hover:not(.active) {
+            background: rgba(200, 155, 60, 0.2);
+        }
+
+        .login-form {
+            width: 100%;
+            max-width: 320px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #f0e6d2;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        .form-group input::placeholder {
+            color: rgba(240, 230, 210, 0.6);
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #c89b3c;
+            box-shadow: 0 0 0 3px rgba(200, 155, 60, 0.2);
+        }
+
+        .forgot-password {
+            text-align: right;
+            margin-bottom: 20px;
+        }
+
+        .forgot-password a {
+            color: #c89b3c;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s ease;
+        }
+
+        .forgot-password a:hover {
+            color: #f0e6d2;
+        }
+
+        .social-login {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .social-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            font-size: 20px;
+        }
+
+        .social-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .facebook { background: #1877f2; }
+        .google { background: #4285f4; }
+        .apple { background: #000; }
+        .xbox { background: #107c10; }
+        .playstation { background: #003087; }
+
+        .login-options {
+            margin-bottom: 20px;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #f0e6d2;
+            font-size: 14px;
+        }
+
+        .remember-me input {
+            width: auto;
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(45deg, #c89b3c, #f0e6d2);
+            border: none;
+            border-radius: 8px;
+            color: #1e2328;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(200, 155, 60, 0.3);
+        }
+
+        .login-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .login-btn:hover::before {
+            left: 100%;
+        }
+
+        .version-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(240, 230, 210, 0.6);
+            font-size: 12px;
+        }
+
+        .right-panel {
+            flex: 1.5;
+            position: relative;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><defs><linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:%23c89b3c;stop-opacity:0.8"/><stop offset="50%" style="stop-color:%238e24aa;stop-opacity:0.6"/><stop offset="100%" style="stop-color:%23ad1457;stop-opacity:0.4"/></linearGradient></defs><polygon points="400,50 750,200 650,550 150,450" fill="url(%23heroGrad)"/><circle cx="600" cy="150" r="30" fill="%23f0e6d2" opacity="0.3"/><circle cx="200" cy="400" r="20" fill="%23c89b3c" opacity="0.5"/><path d="M300,200 Q400,100 500,200 T700,200" stroke="%23f0e6d2" stroke-width="2" fill="none" opacity="0.4"/></svg>') center center;
+            background-size: cover;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .hero-character {
+            width: 300px;
+            height: 400px;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><defs><linearGradient id="char" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:%23f0e6d2"/><stop offset="100%" style="stop-color:%23c89b3c"/></linearGradient></defs><ellipse cx="150" cy="100" rx="40" ry="50" fill="url(%23char)"/><rect x="130" y="150" width="40" height="80" fill="url(%23char)"/><rect x="120" y="230" width="20" height="60" fill="url(%23char)"/><rect x="160" y="230" width="20" height="60" fill="url(%23char)"/><rect x="110" y="160" width="25" height="50" fill="url(%23char)"/><rect x="165" y="160" width="25" height="50" fill="url(%23char)"/><circle cx="140" cy="85" r="3" fill="%23000"/><circle cx="160" cy="85" r="3" fill="%23000"/><path d="M135,95 Q150,105 165,95" stroke="%23000" stroke-width="2" fill="none"/></svg>') center center;
+            background-size: contain;
+            background-repeat: no-repeat;
+            animation: float 3s ease-in-out infinite;
+            filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(2deg); }
+        }
+
+        .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #c89b3c;
+            border-radius: 50%;
+            animation: particle 10s linear infinite;
+        }
+
+        @keyframes particle {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        .support-link {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(240, 230, 210, 0.6);
+            font-size: 12px;
+            text-decoration: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .right-panel {
+                min-height: 40vh;
+            }
+            
+            .left-panel {
+                min-height: 60vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-overlay"></div>
+    <div class="particles"></div>
+    
+    <div class="container">
+        <div class="left-panel">
+            <div class="logo">🎮 RIOT GAMES</div>
+            
+            <div class="warning">
+                임무 보상 관련 문제
+            </div>
+            
+            <div class="login-tabs">
+                <button class="tab active">로그인</button>
+                <button class="tab">QR 코드</button>
+            </div>
+            
+            <form class="login-form">
+                <div class="form-group">
+                    <input type="text" placeholder="계정이름" required>
+                </div>
+                
+                <div class="form-group">
+                    <input type="password" placeholder="비밀번호" required>
+                </div>
+                
+                <div class="forgot-password">
+                    <a href="#">비밀번호를 잊으셨나요?</a>
+                </div>
+                
+                <div class="social-login">
+                    <button type="button" class="social-btn facebook">📘</button>
+                    <button type="button" class="social-btn google">🔍</button>
+                    <button type="button" class="social-btn apple">🍎</button>
+                    <button type="button" class="social-btn xbox">🎮</button>
+                    <button type="button" class="social-btn playstation">🎯</button>
+                </div>
+                
+                <div class="login-options">
+                    <label class="remember-me">
+                        <input type="checkbox">
+                        로그인 상태 유지
+                    </label>
+                </div>
+                
+                <button type="submit" class="login-btn">
+                    →
+                </button>
+            </form>
+            
+            <div class="version-info">
+                로그인에 문제가 있으신가요?<br>
+                게임 상태: v113.0.0
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <div class="hero-character"></div>
+        </div>
+    </div>
+    
+    <a href="#" class="support-link">🎧 지원</a>
+    
+    <script>
+        // 파티클 효과 생성
+        function createParticles() {
+            const particlesContainer = document.querySelector('.particles');
+            
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 10 + 's';
+                particle.style.animationDuration = (Math.random() * 10 + 5) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        }
+        
+        // 탭 전환 기능
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // 로그인 폼 제출
+        document.querySelector('.login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = document.querySelector('.login-btn');
+            btn.style.background = 'linear-gradient(45deg, #28a745, #20c997)';
+            btn.textContent = '로그인 중...';
+            
+            setTimeout(() => {
+                btn.style.background = 'linear-gradient(45deg, #c89b3c, #f0e6d2)';
+                btn.textContent = '→';
+                alert('로그인 성공! (데모용)');
+            }, 2000);
+        });
+        
+        // 소셜 로그인 버튼 효과
+        document.querySelectorAll('.social-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 150);
+            });
+        });
+        
+        // 페이지 로드 시 파티클 생성
+        window.addEventListener('load', createParticles);
+        
+        // 입력 필드 포커스 효과
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('focus', function() {
+                this.style.transform = 'scale(1.02)';
+            });
+            
+            input.addEventListener('blur', function() {
+                this.style.transform = '';
+            });
+        });
+    </script>
+</body>
+</html>
