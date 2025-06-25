@@ -91,7 +91,7 @@ def auth_page():
     setup_database()
     auth_css()
 
-    left_space, form_col, right_space = st.columns((1.5, 0.8, 1.5))
+    left_space, form_col, right_space = st.columns((1.2, 1.2, 1.2))
 
     with form_col:
         choice = st.radio("choice", ["로그인", "회원가입"], horizontal=True, label_visibility="collapsed")
