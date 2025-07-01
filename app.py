@@ -1,7 +1,15 @@
+# app.py (로그인 전용)
+
 import streamlit as st
-from utils import questions, validate_answers, show_footer
 import sqlite3
 import hashlib
+# from datetime import datetime # check_session_timeout 제거로 datetime 불필요
+
+# utils에서 check_session_timeout을 제거했으므로 더 이상 임포트하지 않습니다.
+# 설문 관련 함수들은 app.py에서 직접 사용되지 않으므로, 이 줄은 `from utils import`만 남겨두거나 필요에 따라 다른 임포트를 추가할 수 있습니다.
+# 현재 로직에서는 utils에서 직접 가져올 함수가 없습니다.
+# 다만, utils.py의 questions를 참조하는 로직이 과거에 있었으므로 주석 처리하여 남겨두겠습니다.
+# from utils import questions, validate_answers, show_footer 
 
 # --- 데이터베이스 설정 ---
 def setup_database():
@@ -12,17 +20,18 @@ def setup_database():
     conn.close()
 
 def hash_password(password):
+    """비밀번호를 SHA256 해시로 변환합니다."""
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
-    page_title="로그인 페이지",
+    page_title="투자성향 진단 앱 - 로그인",
     page_icon="📊",
-    layout="wide",
+    layout="wide", # 로그인 페이지는 넓은 레이아웃 사용
     initial_sidebar_state="collapsed"
 )
 
-# --- 로그인 UI 스타일 (탭 기능 추가) ---
+# --- 로그인 UI 스타일 (기존과 동일) ---
 def auth_css():
     st.markdown("""
     <style>
@@ -74,8 +83,12 @@ def auth_css():
         }
 
         div[data-testid="stTextInput"] input {
-            background-color: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 10px; color: #000000 !important; padding: 12px; transition: all 0.3s;
+            background-color: rgba(255, 255, 255, 0.1); 
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px; 
+            color: #000000 !important; /* 검정색으로 유지 */
+            padding: 12px; 
+            transition: all 0.3s;
         }
         
         div[data-testid="stButton"] > button {
@@ -89,24 +102,26 @@ def auth_css():
 # --- 로그인/회원가입 페이지 함수 ---
 def auth_page():
     setup_database()
-    auth_css()
+    auth_css() 
 
     left_space, form_col, right_space = st.columns((1.2, 1.2, 1.2))
 
     with form_col:
         choice = st.radio("choice", ["로그인", "회원가입"], horizontal=True, label_visibility="collapsed")
         
+        if 'choice_radio' in st.session_state and st.session_state.choice_radio == "로그인":
+            choice = "로그인"
+            del st.session_state.choice_radio
+
         if choice == "로그인":
             st.markdown("<h2>📊 로그인</h2>", unsafe_allow_html=True)
             username = st.text_input("아이디", key="login_user", placeholder="아이디")
             password = st.text_input("비밀번호", type="password", key="login_pass", placeholder="비밀번호")
             
             if st.button("로그인", key="login_btn"):
-                # 데모 로그인 + DB 로그인 동시 처리
+                is_authenticated = False
                 if username == "beta" and password == "1234":
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.rerun()
+                    is_authenticated = True
                 else:
                     conn = sqlite3.connect('user_data.db')
                     c = conn.cursor()
@@ -115,11 +130,16 @@ def auth_page():
                     conn.close()
 
                     if db_password_hash and db_password_hash[0] == hash_password(password):
-                        st.session_state.logged_in = True
-                        st.session_state.username = username
-                        st.rerun()
-                    else:
-                        st.error("아이디 또는 비밀번호가 잘못되었습니다.")
+                        is_authenticated = True
+                
+                if is_authenticated:
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    # last_activity_timestamp 업데이트 로직 제거 (세션 타임아웃 기능 삭제로 불필요)
+                    st.session_state.reset_survey_flag = True # 설문 페이지로 갈 때 초기화하도록 플래그 설정
+                    st.switch_page("pages/01_questionnaire.py") # 설문 페이지로 이동
+                else:
+                    st.error("아이디 또는 비밀번호가 잘못되었습니다.")
 
         elif choice == "회원가입":
             st.markdown("<h2>📝 회원가입</h2>", unsafe_allow_html=True)
@@ -136,6 +156,8 @@ def auth_page():
                             c.execute('INSERT INTO users (username, password) VALUES (?, ?)', (new_username, hash_password(new_password)))
                             conn.commit()
                             st.success("회원가입 성공! 이제 로그인해주세요.")
+                            st.session_state.choice_radio = "로그인" 
+                            st.rerun()
                         except sqlite3.IntegrityError:
                             st.error("이미 존재하는 아이디입니다.")
                         finally:
@@ -145,80 +167,11 @@ def auth_page():
                 else:
                     st.error("비밀번호가 일치하지 않습니다.")
 
-# --- 설문 페이지 함수 (이전과 동일) ---
-def survey_page():
-    # ... (코드가 길어 생략, 이전과 동일하게 유지) ...
-    st.markdown("""
-    <style>
-        [data-testid="stAppViewContainer"] > .main { background: none; }
-        .main .block-container { 
-            display: block;
-            align-items: initial;
-            justify-content: initial;
-            min-height: auto;
-            padding-top: 2rem !important;
-        }
-        [data-testid="stHeader"], [data-testid="stSidebar"] { display: block; }
-    </style>
-    """, unsafe_allow_html=True)
-    with st.sidebar:
-        st.success(f"**{st.session_state.username}**님, 환영합니다!")
-        if st.button("↩️ 로그아웃"):
-            keys_to_delete = [k for k in st.session_state.keys() if k != 'logged_in']
-            for key in keys_to_delete:
-                del st.session_state[key]
-            st.session_state.logged_in = False
-            st.rerun()
-    if 'answers' not in st.session_state: st.session_state.answers = {}
-    if 'survey_completed' not in st.session_state: st.session_state.survey_completed = False
-    if 'validation_errors' not in st.session_state: st.session_state.validation_errors = set()
-    def update_answers():
-        for key in questions.keys():
-            if key == "investment_experience":
-                selected_indices = [j for j, _ in enumerate(questions[key]['options']) if st.session_state.get(f"checkbox_{key}_{j}", False)]
-                st.session_state.answers[key] = selected_indices
-            elif f"radio_{key}" in st.session_state:
-                st.session_state.answers[key] = st.session_state[f"radio_{key}"]
-    st.title("📊 투자성향 진단 설문")
-    progress_placeholder = st.container()
-    st.markdown("---")
-    for key, question in questions.items():
-        is_error = key in st.session_state.validation_errors
-        current_answer = st.session_state.answers.get(key)
-        container = st.container()
-        if is_error:
-            container.markdown(f"<h3 style='color: #ff4444;'>**{question['title']}** ⚠️ 필수 문항</h3>", unsafe_allow_html=True)
-        else:
-            container.subheader(f"**{question['title']}**")
-        if key == "investment_experience":
-            container.markdown("**(중복 선택 가능)**")
-            for j, option in enumerate(question['options']):
-                is_checked = isinstance(current_answer, list) and j in current_answer
-                container.checkbox(f"{j+1}. {option}", key=f"checkbox_{key}_{j}", on_change=update_answers, value=is_checked)
-        else:
-            container.radio("옵션을 선택하세요:", options=list(range(len(question['options']))), format_func=lambda x: f"{x+1}. {question['options'][x]}", key=f"radio_{key}", on_change=update_answers, index=current_answer, label_visibility="collapsed")
-        st.markdown("---")
-    answered_count = sum(1 for key in questions if st.session_state.answers.get(key))
-    progress_value = answered_count / len(questions) if questions else 0
-    with progress_placeholder:
-        st.progress(progress_value, text=f"진행률: {answered_count} / {len(questions)} ({progress_value:.0%})")
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        if st.button("🎯 진단 결과 보기", type="primary", use_container_width=True):
-            if validate_answers():
-                st.session_state.survey_completed = True
-                st.switch_page("pages/02_analyzing.py")
-            else:
-                st.error(f"⚠️ {len(st.session_state.validation_errors)}개의 문항에 답변이 필요합니다!")
-                st.rerun()
-    show_footer()
-
-
 # --- 메인 라우터 ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 if st.session_state.logged_in:
-    survey_page()
+    st.switch_page("pages/01_questionnaire.py")
 else:
     auth_page()

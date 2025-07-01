@@ -6,35 +6,45 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 
-# sys 모듈은 더 이상 사용하지 않으므로 제거합니다.
+# check_session_timeout을 제거했으므로 더 이상 임포트하지 않습니다.
+from utils import questions, calculate_score, classify_investment_type, show_footer, reset_survey_state
 
-# utils.py에서 정의된 함수들을 임포트합니다.
-from utils import questions, calculate_score, classify_investment_type, show_footer
-
-# 페이지 설정
+# --- 페이지 설정 ---
 st.set_page_config(
     page_title="진단 결과",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-st.markdown(
-    """
+
+# --- 모든 페이지 공통 UI 숨김 CSS ---
+st.markdown("""
     <style>
-        [data-testid="stSidebar"] {
-            display: none;
-        }
-        [data-testid="collapsedControl"] {
-            display: none;
+        /* 모든 페이지 공통: 헤더, 사이드바 내비게이션, 사이드바 컨트롤 버튼, 푸터 숨기기 */
+        [data-testid="stHeader"] { display: none; }
+        [data-testid="stSidebarNav"] { display: none; } 
+        [data-testid="stSidebar"] { display: none; } 
+        [data-testid="collapsedControl"] { display: none; } 
+        footer { display: block; } /* 푸터는 이 페이지에서 다시 보이게 합니다. */
+
+        /* `st.error`나 `st.warning` 등 메시지 컨테이너의 텍스트 색상 조정 (선택 사항) */
+        div[data-testid="stAlert"] {
+            color: initial; 
         }
     </style>
-    """,
-    unsafe_allow_html=True
-)
-# 직접 접근 방지
+    """, unsafe_allow_html=True)
+
+
+# --- 직접 접근 방지 로직 (로그인 여부 및 설문 완료 여부 확인) ---
+# st.session_in -> st.session_state 오타 수정
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.error("⚠️ 로그인 후 이용해주세요.")
+    st.page_link("app.py", label="로그인 페이지로 돌아가기", icon="🏠")
+    st.stop()
+
 if 'survey_completed' not in st.session_state or not st.session_state.survey_completed:
     st.error("⚠️ 설문을 먼저 완료해주세요.")
-    st.page_link("app.py", label="설문 페이지로 돌아가기", icon="🏠")
+    st.page_link("pages/01_questionnaire.py", label="설문 페이지로 돌아가기", icon="🏠")
     st.stop()
 
 
@@ -45,6 +55,7 @@ def result_page():
 
     total_score, score_breakdown = calculate_score(st.session_state.answers)
     investment_type, color = classify_investment_type(total_score)
+    st.session_state.investment_type = investment_type # 대시보드 페이지에서 활용할 수 있도록 저장
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -58,16 +69,25 @@ def result_page():
 
     st.markdown("---")
     col1, col2 = st.columns(2)
-    question_names = ["연령대", "투자기간", "투자경험", "지식수준", "자산비중", "수입원", "위험감수"]
+    
+    # --- ✨ 문항별 점수 분석 그래프 수정 부분 ✨ ---
+    # 그래프에 표시할 짧은 문항 이름 리스트 (하드코딩)
+    question_display_names = ["연령대", "투자기간", "투자경험", "지식수준", "자산비중", "수입원", "위험감수"]
+    
+    # score_breakdown에서 점수들을 question_display_names 순서에 맞춰 가져오기
+    # questions.keys()의 순서와 question_display_names의 순서가 동일하다고 가정합니다.
+    ordered_score_values = [score_breakdown[k] for k in questions.keys()]
+
     with col1:
         st.subheader("📈 문항별 점수 분석")
         df_scores = pd.DataFrame({
-            '문항': question_names,
-            '점수': list(score_breakdown.values())
+            '문항': question_display_names, # 짧은 문항 이름 사용
+            '점수': ordered_score_values
         })
         fig_bar = px.bar(df_scores, x='문항', y='점수', color='점수', title="문항별 획득 점수", color_continuous_scale='Viridis')
         fig_bar.update_layout(height=400)
         st.plotly_chart(fig_bar, use_container_width=True)
+    # --- ✨ 여기까지 수정 ✨ ---
 
     with col2:
         st.subheader("🎯 투자성향 분포")
@@ -75,7 +95,7 @@ def result_page():
             mode = "gauge+number", value = total_score,
             domain = {'x': [0, 1], 'y': [0, 1]}, title = {'text': "투자성향 점수"},
             gauge = {
-                'axis': {'range': [None, 100]},
+                'axis': {'range': [None, 100]}, 
                 'bar': {'color': color},
                 'steps': [
                     {'range': [0, 20], 'color': "#4CAF50"}, {'range': [20, 40], 'color': "#8BC34A"},
@@ -101,27 +121,24 @@ def result_page():
     st.info(f"**{investment_type} 특징:** {char['설명']}")
     st.success(f"**추천 투자상품:** {char['추천상품']}")
 
-    # --- <<< 메시지 및 버튼 수정 부분 >>> ---
     st.markdown("---")
 
-    # 안정형일 경우 즉시 메시지 표시
     if investment_type == "안정형":
         st.markdown("<h3 style='color: red; text-align: center;'>⚠️ 종목 추천 대상자가 아닙니다!</h3>", unsafe_allow_html=True)
         st.info("이 앱은 투자 상품 추천을 목적으로 하며, '안정형' 투자 성향에는 적합한 추천을 제공하지 않습니다.")
-        st.markdown("---") # 메시지와 버튼 사이 구분선
+        st.markdown("---")
 
-        # '안정형'일 경우, '설문으로 돌아가 수정하기' 버튼만 크게 중앙에 표시
-        # st.columns(1)을 사용하면 전체 너비를 차지하는 단일 컬럼이 됩니다.
-        col1 = st.columns(1)[0] # 리스트에서 첫 번째(유일한) 컬럼 객체를 가져옴
+        col1 = st.columns(1)[0]
         with col1:
             if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True, type="primary"):
-                st.switch_page("app.py")
+                st.session_state.reset_survey_flag = True
+                st.switch_page("pages/01_questionnaire.py") # 설문 페이지로 리디렉션 경로 수정
     else:
-        # 그 외 투자 성향일 경우, 두 개의 버튼을 두 컬럼에 분할하여 표시
         col1, col2 = st.columns(2)
         with col1:
             if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True):
-                st.switch_page("app.py")
+                st.session_state.reset_survey_flag = True
+                st.switch_page("pages/01_questionnaire.py") # 설문 페이지로 리디렉션 경로 수정
         with col2:
             if st.button("📈 위험 등급별 종목 대시보드 보기", type="primary", use_container_width=True):
                 st.switch_page("pages/04_dashboard.py")

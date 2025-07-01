@@ -1,7 +1,10 @@
+# pages/02_analyzing.py
+
 import streamlit as st
 import time
 import base64
 from pathlib import Path
+# from utils import check_session_timeout # check_session_timeout 제거로 불필요
 
 # --- 페이지 설정 ---
 st.set_page_config(
@@ -11,21 +14,33 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS 정의 (애니메이션 포함) ---
+# --- 모든 페이지 공통 UI 숨김 CSS ---
 st.markdown("""
     <style>
-        /* 기본 UI 숨기기 */
-        [data-testid="stSidebarNav"] { display: none; }
-        [data-testid="stSidebar"] { display: none; }
-        [data-testid="collapsedControl"] { display: none; }
+        /* 모든 페이지 공통: 헤더, 사이드바 내비게이션, 사이드바 컨트롤 버튼, 푸터 숨기기 */
+        [data-testid="stHeader"] { display: none; }
+        [data-testid="stSidebarNav"] { display: none; } 
+        [data-testid="stSidebar"] { display: none; } 
+        [data-testid="collapsedControl"] { display: none; } 
+        footer { display: none; } 
 
+        /* 중앙 정렬을 위한 메인 컨테이너 (이 페이지에 특화된 스타일) */
+        .main .block-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            width: 100%;
+            padding: 0 !important;
+        }
+        
         /* 아이콘 회전 애니메이션 */
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
         .spinning-brain {
-            animation: spin 4s linear infinite; /* 4초에 한 바퀴, 무한 반복 */
+            animation: spin 4s linear infinite;
         }
 
         /* 텍스트 점(.) 애니메이션 */
@@ -39,11 +54,28 @@ st.markdown("""
             content: ".";
             animation: ellipsis 1.5s infinite;
             display: inline-block;
-            width: 1.5em; /* 점 세 개가 들어갈 공간 확보 */
+            width: 1.5em;
             text-align: left;
+        }
+
+        /* `st.error`나 `st.warning` 등 메시지 컨테이너의 텍스트 색상 조정 (선택 사항) */
+        div[data-testid="stAlert"] {
+            color: initial; 
         }
     </style>
     """, unsafe_allow_html=True)
+
+# --- 직접 접근 방지 로직 (로그인 여부 및 설문 완료 여부 확인) ---
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.error("⚠️ 로그인 후 이용해주세요.")
+    st.page_link("app.py", label="로그인 페이지로 돌아가기", icon="🏠")
+    st.stop()
+
+if 'survey_completed' not in st.session_state or not st.session_state.survey_completed:
+    st.error("⚠️ 설문을 먼저 완료해주세요.")
+    st.page_link("pages/01_questionnaire.py", label="설문 페이지로 돌아가기", icon="🏠")
+    st.stop()
+
 
 # --- 이미지 파일을 Base64로 인코딩하는 함수 ---
 def get_image_as_base64(file_path):
@@ -54,31 +86,22 @@ def get_image_as_base64(file_path):
     except FileNotFoundError:
         return None
 
-# --- 직접 접근 방지 로직 ---
-if 'survey_completed' not in st.session_state or not st.session_state.survey_completed:
-    st.error("⚠️ 설문을 먼저 완료해주세요.")
-    st.page_link("app.py", label="설문 페이지로 돌아가기", icon="🏠")
-    st.stop()
-
 # --- 메인 로직 ---
 def analyzing_page():
-    # 이미지 로드 또는 이모지 대체
     image_path = Path(__file__).parent.parent / "assets/brain_icon.png"
     image_base64 = get_image_as_base64(image_path)
     
     if image_base64:
-        image_html = f'<img src="data:image/png;base64,{image_base64}" width="100" class="spinning-brain">' # 크기 줄이고, 회전 클래스 적용
+        image_html = f'<img src="data:image/png;base64,{image_base64}" width="100" class="spinning-brain">'
     else:
-        image_html = '<span style="font-size: 80px; display: inline-block;" class="spinning-brain">🧠</span>' # 회전 클래스 적용
+        image_html = '<span style="font-size: 80px; display: inline-block;" class="spinning-brain">🧠</span>'
 
     st.title("🔬 답변을 바탕으로 투자 성향을 분석하고 있습니다.")
     st.markdown("---")
 
-    # 컨테이너 크기 조정을 위해 컬럼 비율 변경
     col1, col2, col3 = st.columns([1, 2, 1]) 
 
     with col2:
-        # 수정된 컨테이너
         st.markdown(f"""
         <div style="
             text-align: center; 
@@ -102,11 +125,9 @@ def analyzing_page():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 동적 프로그레스 바
         progress_bar = st.progress(0, text="분석 시작... 0%")
         status_placeholder = st.empty()
 
-    # 분석 과정 시뮬레이션
     analysis_steps = [
         ("연령대 및 투자 기간 분석", 15),
         ("투자 경험 및 지식 수준 평가", 40),

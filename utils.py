@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
+# from datetime import datetime, timedelta # check_session_timeout 제거로 불필요
 
 # --- 설문 관련 함수 및 데이터 ---
 
@@ -100,7 +100,30 @@ def show_footer():
     st.markdown("---")
     st.markdown("💡 **주의사항**: 본 진단 결과는 참고용이며, 실제 투자 결정 시에는 전문가와 상담하시기 바랍니다.")
 
-# --- 대시보드 데이터 로딩 함수 ---
+
+# --- 설문 관련 세션 상태만 초기화 (기존 함수 유지) ---
+def reset_survey_state():
+    if 'answers' in st.session_state:
+        del st.session_state.answers
+    if 'survey_completed' in st.session_state:
+        del st.session_state.survey_completed
+    if 'validation_errors' in st.session_state:
+        del st.session_state.validation_errors
+    if 'investment_type' in st.session_state:
+        del st.session_state.investment_type
+    
+    # 포트폴리오 선택 내역도 함께 초기화
+    if 'portfolio_results' in st.session_state:
+        del st.session_state.portfolio_results
+    if 'show_results' in st.session_state:
+        del st.session_state.show_results
+    if '포트폴리오 선택' in st.session_state:
+        del st.session_state['포트폴리오 선택']
+    
+    st.session_state.reset_survey_flag = False
+
+
+# --- 대시보드 데이터 로딩 함수 (기존 코드 유지) ---
 
 @st.cache_data
 def load_and_process_data(file_path='dataset1.xlsx'):
