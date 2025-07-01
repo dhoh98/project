@@ -5,7 +5,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-# complete_reset 함수는 더 이상 사용하지 않으므로 임포트에서 제외하거나 그대로 둬도 됩니다.
+
+# sys 모듈은 더 이상 사용하지 않으므로 제거합니다.
+
+# utils.py에서 정의된 함수들을 임포트합니다.
 from utils import questions, calculate_score, classify_investment_type, show_footer
 
 # 페이지 설정
@@ -98,18 +101,30 @@ def result_page():
     st.info(f"**{investment_type} 특징:** {char['설명']}")
     st.success(f"**추천 투자상품:** {char['추천상품']}")
 
-    # --- <<< 버튼 수정 부분 >>> ---
+    # --- <<< 메시지 및 버튼 수정 부분 >>> ---
     st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True):
-            st.switch_page("app.py")
 
-    with col2:
-        # '새로운 진단 시작' 버튼을 '대시보드 보기'로 변경
-        if st.button("📈 위험 등급별 종목 대시보드 보기", type="primary", use_container_width=True):
-            # 세션 상태는 그대로 유지한 채, 대시보드 페이지로 이동합니다.
-            st.switch_page("pages/04_dashboard.py")
+    # 안정형일 경우 즉시 메시지 표시
+    if investment_type == "안정형":
+        st.markdown("<h3 style='color: red; text-align: center;'>⚠️ 종목 추천 대상자가 아닙니다!</h3>", unsafe_allow_html=True)
+        st.info("이 앱은 투자 상품 추천을 목적으로 하며, '안정형' 투자 성향에는 적합한 추천을 제공하지 않습니다.")
+        st.markdown("---") # 메시지와 버튼 사이 구분선
+
+        # '안정형'일 경우, '설문으로 돌아가 수정하기' 버튼만 크게 중앙에 표시
+        # st.columns(1)을 사용하면 전체 너비를 차지하는 단일 컬럼이 됩니다.
+        col1 = st.columns(1)[0] # 리스트에서 첫 번째(유일한) 컬럼 객체를 가져옴
+        with col1:
+            if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True, type="primary"):
+                st.switch_page("app.py")
+    else:
+        # 그 외 투자 성향일 경우, 두 개의 버튼을 두 컬럼에 분할하여 표시
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True):
+                st.switch_page("app.py")
+        with col2:
+            if st.button("📈 위험 등급별 종목 대시보드 보기", type="primary", use_container_width=True):
+                st.switch_page("pages/04_dashboard.py")
 
 result_page()
 show_footer()
