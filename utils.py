@@ -1,9 +1,6 @@
-# utils.py
-
 import streamlit as st
 import pandas as pd
 import numpy as np
-# from datetime import datetime, timedelta # check_session_timeout 제거로 불필요
 
 # --- 설문 관련 함수 및 데이터 ---
 
@@ -147,8 +144,8 @@ def load_and_process_data(file_path='이거진짜마지막데이터셋.xlsx'): #
     - 필수 컬럼 존재 여부 확인
     - 숫자형 컬럼 타입 변환 및 NaN 처리
     - '초과수익률'을 '초과수익률_apply'로 이름 통일
-    - 각 회사별 가장 최신 회계년도 데이터만 선택
     - '위험도' 컬럼 계산 (기존 로직 유지)
+    **이번 버전에서는 각 회사별 최신 회계년도 필터링을 제거하여 모든 연도 데이터를 로드합니다.**
     """
     try:
         df = pd.read_excel(file_path, dtype={'거래소코드': str})
@@ -193,48 +190,49 @@ def load_and_process_data(file_path='이거진짜마지막데이터셋.xlsx'): #
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
             # 중요한 계산에 사용되는 컬럼은 0으로 채우거나 특정 값으로 처리
-            if col in ['연간변동성', 'CAGR', '초과수익률', '배당수익률']:
+            if col in ['연간변동성', 'CAGR', '초과수익률']: # 배당수익률은 제거
                 df[col] = df[col].fillna(0) # 0으로 채워 계산 오류 방지
             elif col == 'target_class': # target_class는 정수형으로 유지
                  df[col] = df[col].fillna(-1).astype(int) # 결측치는 -1 등으로 처리 후 정수형으로 변환
         
     # '초과수익률' 컬럼을 '초과수익률_apply'로 이름 통일 (대시보드 코드 호환성)
-    # 기존 코드에서 초과수익률_apply가 없으면 배당수익률로 계산했는데, 이제 초과수익률이 파일에 있음
     if '초과수익률' in df.columns:
         df['초과수익률_apply'] = df['초과수익률']
-    elif '초과수익률_apply' not in df.columns: # 만약 초과수익률도 없으면 기존 로직처럼 랜덤 값 생성
+    elif '초과수익률_apply' not in df.columns: 
         st.warning("⚠️ 경고: '초과수익률' 또는 '초과수익률_apply' 컬럼이 없어 랜덤 값으로 대체합니다.")
         df['초과수익률_apply'] = np.random.uniform(-10, 20, len(df))
 
-    # '배당수익률' 컬럼이 없을 경우 랜덤 값 생성 (경고 메시지 제거)
+    # '배당수익률' 컬럼이 없을 경우 랜덤 값 생성 
     if '배당수익률' not in df.columns:
         df['배당수익률'] = np.random.uniform(0, 5, len(df))
 
-    # 각 회사(거래소코드)별 가장 최신 회계년도 데이터만 선택
-    # 기존 utils의 `load_and_process_data`는 모든 연도 데이터를 가져온 후 `final_df`에서 최신 연도만 남기는 방식.
-    # 여기서는 `groupby`를 통해 최신 연도만 가져오기 전에 `sort_values`를 먼저 수행하여 정확성을 높임.
-    df.sort_values(by=['거래소코드', '회계년도'], ascending=True, inplace=True)
-    df_processed = df.loc[df.groupby('거래소코드')['회계년도'].idxmax()].copy()
-    
-    # '회사명' 컬럼에 NaN 값이 있는 경우 제거 (데이터 편집 시 문제 발생 방지)
-    df_processed.dropna(subset=['회사명'], inplace=True)
+    # '회사명' 컬럼에 NaN 값이 있는 경우 제거
+    df.dropna(subset=['회사명', '회계년도'], inplace=True) # 회계년도도 NaN 제거
 
+    # --- 기존에 문제가 되었던, 각 회사별 최신 회계년도만 선택하는 로직을 제거합니다. ---
+    # df.sort_values(by=['거래소코드', '회계년도'], ascending=True, inplace=True)
+    # df_processed = df.loc[df.groupby('거래소코드')['회계년도'].idxmax()].copy()
+    # 이 부분을 삭제함으로써 df_full에는 모든 연도의 데이터가 포함되게 됩니다.
+    df_processed = df.copy() # 이제 df_processed는 모든 연도의 데이터를 포함합니다.
+    # --- 수정 끝 ---
+    
     # 기존 '위험도' 계산 로직 유지
     col_c1, col_c2 = '이자보상배율(이자비용)', '영업활동으로 인한 현금흐름(*)(천원)'
     if col_c1 in df_processed.columns and col_c2 in df_processed.columns:
         # 임시 df를 사용하여 원본 df의 3년 합계를 계산
-        temp_df = df.copy() # 원본 df 사용
+        temp_df = df_processed.copy() # 모든 연도 데이터가 있는 df_processed 사용
         temp_df['C1_flag'] = (temp_df[col_c1].fillna(999) < 1).astype(int)
         temp_df['C2_flag'] = (temp_df[col_c2].fillna(9999) < 0).astype(int)
         
+        # 롤링 윈도우 계산 시 그룹바이를 통해 각 회사별로 적용되도록 함
         temp_df['C1_3yr_sum'] = temp_df.groupby('거래소코드')['C1_flag'].rolling(window=3, min_periods=3).sum().reset_index(level=0, drop=True)
         temp_df['C2_3yr_sum'] = temp_df.groupby('거래소코드')['C2_flag'].rolling(window=3, min_periods=3).sum().reset_index(level=0, drop=True)
         
-        # 위험도 계산 (여기서 NaN이 발생할 수 있음)
+        # 위험도 계산
         temp_df['C1_met'] = (temp_df['C1_3yr_sum'] == 3)
         temp_df['C2_met'] = (temp_df['C2_3yr_sum'] == 3)
 
-        conditions = [(temp_df['C1_met'] == True) & (temp_df['C2_met'] == True), (temp_df['C1_met'] == True) | (temp_df['C2_met'] == True)]
+        conditions = [(temp_df['C1_met'] == True) & (temp_df['C2_met'] == True), (temp_df['C1_met'] | temp_df['C2_met']) == True] # OR 조건 수정
         choices = [2, 1]
         temp_df['위험도'] = np.select(conditions, choices, default=0)
         temp_df.loc[temp_df['C1_3yr_sum'].isnull() | temp_df['C2_3yr_sum'].isnull(), '위험도'] = np.nan
@@ -264,6 +262,7 @@ def load_and_process_data(file_path='이거진짜마지막데이터셋.xlsx'): #
 def get_recommended_stocks(df_raw, investment_type):
     """
     사용자의 투자성향에 따라 종목을 필터링하고 CAGR이 높은 상위 10개 종목을 추천합니다.
+    이 함수는 항상 df_raw에서 '최신 연도'의 데이터를 사용하여 추천합니다.
     """
     # 필수 컬럼 확인 (데이터 로드 시 확인했지만, 함수 내에서 다시 한 번 확인)
     required_cols_for_recommendation = ['회계년도', 'target_class', '연간변동성', 'CAGR', '회사명']
@@ -272,28 +271,22 @@ def get_recommended_stocks(df_raw, investment_type):
             st.error(f"⚠️ 추천 로직에 필요한 컬럼 '{col}'이(가) 데이터셋에 없습니다. 데이터셋을 확인해주세요.")
             return pd.DataFrame()
 
-    # 2022년 데이터만 필터링 (최신 데이터 가정)
-    df_2022 = df_raw[df_raw['회계년도'] == 2022].copy()
-
-    if df_2022.empty:
-        # 2022년 데이터가 없으면, 전체 데이터에서 최신 연도를 찾아 사용하도록 대체
-        latest_year = df_raw['회계년도'].max()
-        if pd.isna(latest_year):
-            st.warning("⚠️ 데이터에 유효한 '회계년도' 정보가 없어 종목 추천을 할 수 없습니다.")
-            return pd.DataFrame()
-        st.info(f"💡 2022년 데이터가 없습니다. 최신 연도인 {latest_year}년 데이터로 추천을 시도합니다.")
-        df_filtered_by_year = df_raw[df_raw['회계년도'] == latest_year].copy()
-    else:
-        df_filtered_by_year = df_2022
+    # 가장 최신 연도 데이터만 필터링하여 추천 종목을 선정
+    latest_year = df_raw['회계년도'].max()
+    if pd.isna(latest_year):
+        st.warning("⚠️ 데이터에 유효한 '회계년도' 정보가 없어 종목 추천을 할 수 없습니다.")
+        return pd.DataFrame()
+        
+    df_filtered_by_year = df_raw[df_raw['회계년도'] == latest_year].copy()
 
     if df_filtered_by_year.empty:
-        st.warning("⚠️ 필터링할 유효한 회계년도 데이터가 없어 종목 추천을 할 수 없습니다.")
+        st.warning(f"⚠️ 최신 연도인 {latest_year}년에 해당하는 데이터가 없어 종목 추천을 할 수 없습니다.")
         return pd.DataFrame()
 
     # 투자성향별 target_class 매핑
     target_class_map = {
-        "안정형": 0, # 안정형도 target_class 0을 따르도록
-        "안정추구형": 0,
+        "안정형": 0,
+        "안정추구형": 0, # 안정추구형도 target_class 0을 따르도록
         "위험중립형": 1,
         "적극투자형": 2,
         "공격투자형": 3
@@ -306,11 +299,10 @@ def get_recommended_stocks(df_raw, investment_type):
         return pd.DataFrame()
 
     # target_class 기준으로 1차 필터링
-    # 현재 투자유형의 target_class만 허용 (예: 안정추구형은 target_class 0)
     filtered_by_class = df_filtered_by_year[df_filtered_by_year['target_class'] == current_target_class].copy()
     
     if filtered_by_class.empty:
-        st.info(f"선택된 '{investment_type}' 유형(target_class: {current_target_class})에 해당하는 종목이 없습니다. 다른 종목을 탐색해 보세요.")
+        st.info(f"선택된 '{investment_type}' 유형(target_class: {current_target_class})에 해당하는 종목이 최신 연도 데이터에 없습니다. 다른 종목을 탐색해 보세요.")
         return pd.DataFrame()
 
     # 연간변동성 분위수 상한 설정
@@ -325,11 +317,10 @@ def get_recommended_stocks(df_raw, investment_type):
     # 공격투자형은 기본값 1.0 유지
 
     # 연간변동성 분위수 필터링
-    # 연간변동성 컬럼에 유효한 값이 있는 경우에만 분위수 계산 및 필터링 적용
-    if not filtered_by_class['연간변동성'].empty and filtered_by_class['연간변동성'].nunique() > 1: # 고유값 1개 이상일 때만 분위수 계산 의미
+    if not filtered_by_class['연간변동성'].empty and filtered_by_class['연간변동성'].nunique() > 1:
         volatility_upper_limit = filtered_by_class['연간변동성'].quantile(percentile_upper_bound)
         filtered_by_volatility = filtered_by_class[filtered_by_class['연간변동성'] <= volatility_upper_limit].copy()
-    else: # 연간변동성 데이터가 없거나 모두 같은 값일 경우 추가 필터링 없음
+    else: 
         filtered_by_volatility = filtered_by_class 
 
     if filtered_by_volatility.empty:
