@@ -3,11 +3,11 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-# check_session_timeout을 제거했으므로 더 이상 임포트하지 않습니다.
-from utils import load_and_process_data, reset_survey_state
+import time
+from utils import load_and_process_data, reset_survey_state, get_recommended_stocks
 
 # 페이지 설정
-st.set_page_config(page_title="종목 대시보드", page_icon="📈", layout="wide")
+st.set_page_config(page_title="추천 펀드", page_icon="💰", layout="wide")
 
 # --- 모든 페이지 공통 UI 숨김 CSS ---
 st.markdown("""
@@ -17,19 +17,132 @@ st.markdown("""
         [data-testid="stSidebarNav"] { display: none; } 
         [data-testid="stSidebar"] { display: none; } 
         [data-testid="collapsedControl"] { display: none; } 
-        footer { display: block; } /* 푸터는 이 페이지에서 다시 보이게 합니다. */
+        footer { display: block; }
         
-        /* 테이블 정렬 아이콘 숨기기 (기존에 있었음) */
+        /* 테이블 정렬 아이콘 숨기기 */
         [data-testid="stColumnSortIcon"] { display: none; } 
 
-        /* `st.error`나 `st.warning` 등 메시지 컨테이너의 텍스트 색상 조정 (선택 사항) */
-        div[data-testid="stAlert"] {
-            color: initial; 
+        /* 선물 상자 애니메이션 */
+        @keyframes wobble {
+            0% { transform: translateX(0) rotate(0deg); }
+            10% { transform: translateX(-10px) rotate(-8deg); }
+            20% { transform: translateX(10px) rotate(8deg); }
+            30% { transform: translateX(-8px) rotate(-5deg); }
+            40% { transform: translateX(8px) rotate(5deg); }
+            50% { transform: translateX(-5px) rotate(-3deg); }
+            60% { transform: translateX(5px) rotate(3deg); }
+            70% { transform: translateX(-3px) rotate(-1deg); }
+            80% { transform: translateX(3px) rotate(1deg); }
+            90% { transform: translateX(-1px) rotate(0deg); }
+            100% { transform: translateX(0) rotate(0deg); }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        /* 선물상자 열리는 애니메이션 */
+        @keyframes giftOpen {
+            0% { 
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+            25% { 
+                transform: scale(1.2) rotate(-10deg);
+                opacity: 0.8;
+            }
+            50% { 
+                transform: scale(1.5) rotate(10deg);
+                opacity: 0.6;
+            }
+            75% { 
+                transform: scale(2) rotate(-5deg);
+                opacity: 0.3;
+            }
+            100% { 
+                transform: scale(2.5) rotate(0deg);
+                opacity: 0;
+            }
+        }
+        
+        /* 반짝이는 효과 */
+        @keyframes sparkle {
+            0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+            50% { opacity: 1; transform: scale(1) rotate(180deg); }
+        }
+        
+        .wobbling-gift-box {
+            animation: wobble 1.2s ease-in-out, pulse 2s ease-in-out infinite;
+            transform-origin: center;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .opening-gift-box {
+            animation: giftOpen 2s ease-in-out forwards;
+            transform-origin: center;
+            display: inline-block;
+        }
+        
+        .sparkles {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 30px;
+            pointer-events: none;
+        }
+        
+        .sparkle {
+            position: absolute;
+            animation: sparkle 1.5s ease-in-out infinite;
+        }
+        
+        .sparkle:nth-child(1) { top: -40px; left: -40px; animation-delay: 0s; }
+        .sparkle:nth-child(2) { top: -40px; right: -40px; animation-delay: 0.3s; }
+        .sparkle:nth-child(3) { bottom: -40px; left: -40px; animation-delay: 0.6s; }
+        .sparkle:nth-child(4) { bottom: -40px; right: -40px; animation-delay: 0.9s; }
+        .sparkle:nth-child(5) { top: -20px; left: 0; animation-delay: 1.2s; }
+        
+        .gift-container {
+            text-align: center;
+            padding: 20px;
+            margin: 20px 0;
+            position: relative;
+            min-height: 200px;
+        }
+        
+        /* 페이드인 애니메이션 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.8s ease-out;
+        }
+        
+        /* 선물 내용물 등장 애니메이션 */
+        @keyframes slideUp {
+            from { 
+                opacity: 0; 
+                transform: translateY(50px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+        
+        .slide-up {
+            animation: slideUp 1s ease-out;
         }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 직접 접근 방지 로직 (로그인 여부 및 설문 완료 여부 확인) ---
+# --- 직접 접근 방지 로직 ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.error("⚠️ 로그인 후 이용해주세요.")
     st.page_link("app.py", label="로그인 페이지로 돌아가기", icon="🏠")
@@ -40,154 +153,142 @@ if 'survey_completed' not in st.session_state or not st.session_state.survey_com
     st.page_link("pages/01_questionnaire.py", label="설문 페이지로 돌아가기", icon="🏠")
     st.stop()
 
+# --- 페이지 시작 ---
+st.title("💰 투자성향 맞춤 추천 펀드")
 
-st.title("📈 맞춤형 종목 필터링 대시보드")
+investment_type = st.session_state.get('investment_type', '위험중립형')
 
-# 세션 상태 변수 초기화
-if 'show_results' not in st.session_state: st.session_state.show_results = False
-if 'portfolio_results' not in st.session_state: st.session_state.portfolio_results = pd.DataFrame()
-if '포트폴리오 선택' not in st.session_state: st.session_state['포트폴리오 선택'] = []
+st.markdown(f"### 🎉 회원님의 투자성향은 **<span style='color: #4CAF50;'>{investment_type}</span>** 입니다!", unsafe_allow_html=True)
+st.write(f"아래는 **{investment_type}** 투자 성향에 맞춰 엄선된 펀드형 추천 포트폴리오입니다.")
+st.markdown("---")
 
-# 데이터 로드 및 전처리
+# 데이터 로드
 df_full = load_and_process_data()
-if not df_full.empty:
-    df_full = df_full[df_full['위험도'] != 2].copy()
 
 if df_full.empty:
-    st.info("처리할 데이터가 없거나, 필터링 후 표시할 종목이 없습니다.")
+    st.warning("데이터 로드에 실패했거나 처리할 종목이 없습니다.")
     st.stop()
 
-df = df_full.loc[df_full.groupby('거래소코드')['회계년도'].idxmax()].copy()
+# --- 상태 초기화 ---
+if 'animation_stage' not in st.session_state:
+    st.session_state.animation_stage = 'initial'  # initial -> animating -> completed
 
-# --- 필터, 정렬 및 검색 옵션 Expander ---
-with st.expander("🔍 필터, 정렬 및 검색 옵션", expanded=True):
-    def get_default_risk_level():
-        investment_type = st.session_state.get('investment_type', '위험중립형') 
-        if investment_type in ["안정형", "안정추구형"]: return '저위험'
-        elif investment_type == "위험중립형": return '중위험'
-        else: return '중위험'
+# 단계별 처리
+if st.session_state.animation_stage == 'initial':
+    # 초기 상태: 선물 상자 표시
+    st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>✨ 지금 바로 회원님께 맞는 추천 펀드를 확인하세요! ✨</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #666;'>아래 선물 상자를 클릭해 주세요.</p>", unsafe_allow_html=True)
     
-    col_filter, col_sort1, col_sort2 = st.columns(3)
-    with col_filter:
-        risk_level_options = ['저위험', '중위험', '전체 보기']
-        default_risk_label = get_default_risk_level()
-        try: 
-            default_index = risk_level_options.index(default_risk_label)
-        except ValueError: 
-            default_index = 2
-
-        selected_risk_label = st.selectbox("위험 등급", options=risk_level_options, index=default_index)
+    # 선물 상자 컨테이너
+    st.markdown("""
+        <div class='gift-container'>
+            <div style='font-size: 120px;'>🎁</div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    risk_level_map = {'저위험': [0], '중위험': [1], '전체 보기': [0, 1]}
-    selected_risk_codes = risk_level_map[selected_risk_label]
-    filtered_df = df[df['위험도'].isin(selected_risk_codes)].copy()
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🎁 추천 펀드 공개하기", type="primary", use_container_width=True):
+            st.session_state.animation_stage = 'animating'
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    sort_option_map = {'기본 (회사명 순)': '회사명'}
-    if '배당수익률' in filtered_df.columns: sort_option_map['배당수익률'] = '배당수익률'
-    if '초과수익률_apply' in filtered_df.columns: sort_option_map['초과수익률'] = '초과수익률_apply'
+elif st.session_state.animation_stage == 'animating':
+    # 애니메이션 상태: 선물 상자가 열리는 효과만 표시 (제목/설명은 그대로)
+    st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>✨ 지금 바로 회원님께 맞는 추천 펀드를 확인하세요! ✨</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #666;'>선물 상자를 열고 있어요...</p>", unsafe_allow_html=True)
     
-    with col_sort1:
-        sort_by_label = st.selectbox("정렬 기준", options=list(sort_option_map.keys()))
-    sort_by_col = sort_option_map[sort_by_label]
-
-    with col_sort2:
-        is_desc_default = sort_by_col in ['배당수익률', '초과수익률_apply']
-        ascending = st.radio("정렬 순서", ('오름차순', '내림차순'), 
-                             index=1 if is_desc_default else 0,
-                             horizontal=True, key='sort_order')
+    # 선물 상자 열리는 애니메이션과 반짝이만 표시
+    st.markdown("""
+        <div class='gift-container'>
+            <div class='opening-gift-box' style='font-size: 120px;'>🎁</div>
+            <div class='sparkles'>
+                <div class='sparkle'>✨</div>
+                <div class='sparkle'>⭐</div>
+                <div class='sparkle'>💫</div>
+                <div class='sparkle'>🌟</div>
+                <div class='sparkle'>✨</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
-    is_ascending = (ascending == '오름차순')
-    filtered_df = filtered_df.sort_values(by=sort_by_col, ascending=is_ascending)
-
-st.markdown("---")
-st.header(f"'{selected_risk_label}' 종목 리스트")
-
-col_search, col_btn1, col_btn2 = st.columns([2, 1, 1])
-with col_search:
-    search_query = st.text_input("종목명 검색", placeholder="종목명 일부를 입력하세요...", label_visibility="collapsed")
-
-if search_query:
-    df_to_display = filtered_df[filtered_df['회사명'].str.contains(search_query, case=False, na=False)]
-else:
-    df_to_display = filtered_df
-
-with col_btn1:
-    if st.button("✨ 상위 5개 선택", use_container_width=True):
-        top_5_stocks = df_to_display.head(5)['회사명'].tolist()
-        st.session_state['포트폴리오 선택'] = top_5_stocks
-        st.rerun()
-with col_btn2:
-    if st.button("🔄 모두 해제", use_container_width=True):
-        st.session_state['포트폴리오 선택'] = []
-        st.rerun()
-
-st.info("💡 **'상위 5개 선택' 버튼은 현재 보이는 리스트의 정렬 순서를 따릅니다.**")
-
-if df_to_display.empty:
-    st.warning("표시할 종목이 없습니다. 필터 조건을 조정하거나 검색어를 확인해주세요.")
-else:
-    cols_to_display = ['회사명', '거래소코드', '배당수익률', '초과수익률_apply']
-    final_display_cols = [col for col in cols_to_display if col in df_to_display.columns]
+    # 펀드 데이터 로드 (애니메이션 중에 미리 준비)
+    if 'recommended_fund_stocks' not in st.session_state:
+        st.session_state.recommended_fund_stocks = get_recommended_stocks(df_full, investment_type)
     
-    display_df = df_to_display[final_display_cols].copy()
-    display_df.insert(0, '선택', False)
-    display_df['선택'] = display_df['회사명'].isin(st.session_state['포트폴리오 선택'])
-
-    edited_df = st.data_editor(
-        display_df, 
-        column_config={"선택": st.column_config.CheckboxColumn(required=True)}, 
-        disabled=display_df.columns.drop('선택'), 
-        hide_index=True, 
-        use_container_width=True
-    )
-    st.session_state['포트폴리오 선택'] = edited_df[edited_df['선택']]['회사명'].tolist()
-
-selected_stocks_df = filtered_df[filtered_df['회사명'].isin(st.session_state['포트폴리오 선택'])]
-num_selected = len(selected_stocks_df)
-st.markdown("---")
-
-is_disabled = (num_selected == 0)
-if st.button('📈 포트폴리오 분석 실행', type='primary', use_container_width=True, disabled=is_disabled):
-    if '초과수익률_apply' in selected_stocks_df.columns:
-        st.session_state.portfolio_results = selected_stocks_df.copy()
-        st.session_state.show_results = True
-    else:
-        st.error("⚠️ 분석에 필요한 '초과수익률_apply' 컬럼이 데이터에 없습니다. 데이터셋을 확인해주세요.")
-        st.session_state.show_results = False
+    # 애니메이션 시간 대기
+    time.sleep(2.5)  # 선물상자 열리는 애니메이션 시간
+    
+    # 풍선 애니메이션
+    st.balloons()
+    
+    # 다음 단계로 이동
+    st.session_state.animation_stage = 'completed'
     st.rerun()
 
-if num_selected == 0:
-    st.session_state.show_results = False
-    st.warning("**분석할 종목을 1개 이상 선택해주세요.**")
+else:  # animation_stage == 'completed'
+    # 완료 상태: 펀드 정보 표시
+    st.markdown("<div class='slide-up'>", unsafe_allow_html=True)
+    
+    recommended_df = st.session_state.recommended_fund_stocks
 
-st.markdown("---")
-st.header("📊 포트폴리오 분석 결과")
-if st.session_state.show_results:
-    results_df = st.session_state.portfolio_results
-    if not results_df.empty:
+    if not recommended_df.empty:
+        st.subheader(f"✨ 추천 펀드 구성 종목 ({len(recommended_df)}개)")
+        
+        # 추천 종목 목록을 테이블로 표시
+        cols_to_display_rec = ['회사명', '거래소코드', 'CAGR', '연간변동성', '초과수익률_apply', 'target_class']
+        display_recommended_df = recommended_df[[col for col in cols_to_display_rec if col in recommended_df.columns]].copy()
+        display_recommended_df.columns = ['회사명', '거래소코드', 'CAGR (%)', '연간변동성 (%)', '초과수익률 (%)', '투자성향분류']
+        
+        st.dataframe(display_recommended_df, hide_index=True, use_container_width=True)
+        st.markdown("---")
+
+        # 추천 펀드의 총 성과 요약
+        st.subheader("📊 추천 펀드 성과 요약")
+        
         benchmark_rate = 2.8
-        total_excess_return = results_df['초과수익률_apply'].sum()
 
-        col_res1, col_res2 = st.columns([1, 2])
-        with col_res1:
-            st.subheader("✅ 포트폴리오 성과")
-            st.metric(label=f"총 초과수익률 (vs 국고채 {benchmark_rate}%)", value=f"{total_excess_return:.2f} %p")
-        with col_res2:
-            st.subheader(f"📊 선택된 {len(results_df)}개 종목별 초과수익률")
-            fig = px.bar(results_df, x='회사명', y='초과수익률_apply', 
-                         color='초과수익률_apply', 
-                         color_continuous_scale=px.colors.diverging.RdYlGn, 
-                         color_continuous_midpoint=0) 
-            st.plotly_chart(fig, use_container_width=True)
+        # 포트폴리오 성과 계산
+        average_excess_return = recommended_df['초과수익률_apply'].mean() if '초과수익률_apply' in recommended_df.columns else 0
+        average_cagr = recommended_df['CAGR'].mean() if 'CAGR' in recommended_df.columns else 0
+        average_volatility = recommended_df['연간변동성'].mean() if '연간변동성' in recommended_df.columns else 0
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(label="평균 초과수익률 (vs 국고채)", value=f"{average_excess_return:.2f} %p")
+        with col2:
+            st.metric(label="평균 연간복리수익률 (CAGR)", value=f"{average_cagr:.2f} %")
+        with col3:
+            st.metric(label="평균 연간변동성", value=f"{average_volatility:.2f} %")
+        
+        st.info(f"💡 이 펀드는 회원님의 '{investment_type}' 성향에 맞춰, {df_full['회계년도'].max()}년 데이터 기준 '연간변동성'이 {investment_type} 기준에 부합하며 'CAGR'이 높은 상위 10개 종목으로 구성되었습니다.")
+
     else:
-        st.info("선택된 종목이 없습니다. 위에서 종목을 선택하고 '포트폴리오 분석 실행' 버튼을 눌러주세요.")
-else:
-    st.info("위 표에서 종목을 선택하고 '포트폴리오 분석 실행' 버튼을 누르면 이곳에 결과가 표시됩니다.")
+        st.warning("회원님의 투자성향에 맞는 추천 종목을 찾지 못했습니다. 개별 종목 분석 페이지에서 직접 종목을 찾아보세요.")
+    
+    st.markdown("---")
+    st.subheader("📋 다음 단계")
 
-st.markdown("---")
-
-back_to_survey_col = st.columns(1)[0]
-with back_to_survey_col:
-    if st.button("🏠 설문 페이지로 돌아가기", use_container_width=True, type="primary"):
-        st.session_state.reset_survey_flag = True
-        st.switch_page("pages/01_questionnaire.py")
+    # 다음 페이지로 이동 버튼
+    col_survey_btn, col_stock_btn = st.columns(2) 
+    with col_survey_btn:
+        if st.button("🏠 설문 페이지로 돌아가기", use_container_width=True):
+            # 애니메이션 상태도 초기화
+            st.session_state.animation_stage = 'initial'
+            if 'recommended_fund_stocks' in st.session_state:
+                del st.session_state.recommended_fund_stocks
+            reset_survey_state()
+            st.switch_page("pages/01_questionnaire.py")
+    
+    with col_stock_btn:
+        if st.button("📈 개별 종목 분석 및 포트폴리오 구성하기", type="primary", use_container_width=True):
+            if not recommended_df.empty:
+                st.session_state['포트폴리오 선택'] = recommended_df['회사명'].tolist()
+            else:
+                st.session_state['포트폴리오 선택'] = []
+            st.switch_page("pages/05_individual_stock_analysis.py")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
