@@ -1,29 +1,26 @@
-# pages/04_dashboard.py
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import time
-from utils import load_and_process_data, reset_survey_state, get_recommended_stocks
+import numpy as np 
+from utils import load_and_process_data, reset_survey_state
 
 # 페이지 설정
 st.set_page_config(page_title="추천 펀드", page_icon="💰", layout="wide")
 
-# --- 모든 페이지 공통 UI 숨김 CSS ---
+# --- 모든 페이지 공통 UI 숨김 CSS (이전과 동일) ---
 st.markdown("""
     <style>
-        /* 모든 페이지 공통: 헤더, 사이드바 내비게이션, 사이드바 컨트롤 버튼, 푸터 숨기기 */
+        /* CSS styles remain the same */
         [data-testid="stHeader"] { display: none; }
         [data-testid="stSidebarNav"] { display: none; } 
         [data-testid="stSidebar"] { display: none; } 
         [data-testid="collapsedControl"] { display: none; } 
         footer { display: block; }
         
-        /* 테이블 정렬 아이콘 숨기기 */
         [data-testid="stColumnSortIcon"] { display: none; } 
 
-        /* 선물 상자 애니메이션 */
         @keyframes wobble {
             0% { transform: translateX(0) rotate(0deg); }
             10% { transform: translateX(-10px) rotate(-8deg); }
@@ -44,7 +41,6 @@ st.markdown("""
             100% { transform: scale(1); }
         }
         
-        /* 선물상자 열리는 애니메이션 */
         @keyframes giftOpen {
             0% { 
                 transform: scale(1) rotate(0deg);
@@ -68,7 +64,6 @@ st.markdown("""
             }
         }
         
-        /* 반짝이는 효과 */
         @keyframes sparkle {
             0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
             50% { opacity: 1; transform: scale(1) rotate(180deg); }
@@ -143,7 +138,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 직접 접근 방지 로직 ---
+# --- 직접 접근 방지 로직 (이전과 동일) ---
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.error("⚠️ 로그인 후 이용해주세요.")
     st.page_link("app.py", label="로그인 페이지로 돌아가기", icon="🏠")
@@ -154,57 +149,214 @@ if 'survey_completed' not in st.session_state or not st.session_state.survey_com
     st.page_link("pages/01_questionnaire.py", label="설문 페이지로 돌아가기", icon="🏠")
     st.stop()
 
-# --- 1. 연도별 CAGR 평균 계산 함수 ---
-def calculate_yearly_recommended_cagr(df_full, recommended_df_latest_year):
+# --- 백테스팅 결과 차트 생성 함수 (모든 클래스) ---
+def create_backtest_results_chart(backtest_results, investment_type): # investment_type 인자 추가
     """
-    최신 연도 (2022년) 기준 추천된 종목들의 2017-2022년 연도별 CAGR 평균을 계산하고,
-    데이터가 없는 연도는 해당 추천 종목들의 전체 기간 평균 CAGR로 대체합니다.
+    백테스팅 결과를 막대 차트로 시각화합니다.
+    사용자 투자성향에 맞는 클래스 그룹만 색깔을 표시하고 나머지는 흑백으로 합니다.
     """
-    # '회계년도' 컬럼을 정수형으로 변환 (오류 방지)
-    if '회계년도' in df_full.columns:
-        df_full['회계년도'] = pd.to_numeric(df_full['회계년도'], errors='coerce').astype('Int64')
-        df_full.dropna(subset=['회계년도'], inplace=True) # 변환 실패한 행 제거
-    else:
+    if not backtest_results:
+        return go.Figure()
+    
+    # investment_type에 따라 사용할 '조건 그룹'을 매핑
+    investment_group_map = {
+        '안정형': 'Class 0 (Q1)', '안정추구형': 'Class 1 (Q1~Q2)', 
+        '위험중립형': 'Class 2 (Q1~Q3)', '적극투자형': 'Class 3 (Q1~Q4)', 
+        '공격투자형': 'Class 3 (Q1~Q4)',
+    }
+    selected_group_label = investment_group_map.get(investment_type, 'Class 2 (Q1~Q3)')
+
+    # 데이터 준비: 연도, 클래스 라벨, 평균 CAGR 추출 및 정렬
+    chart_data = []
+    sorted_keys = sorted(backtest_results.keys()) 
+    for key in sorted_keys:
+        year, label = key.split(' - ')
+        chart_data.append({'Year': year, 'Label': label, 'CAGR': backtest_results[key]['mean_cagr']})
+    
+    df_chart = pd.DataFrame(chart_data)
+    
+    label_sort_map = {'Class 0 (Q1)': 0, 'Class 1 (Q1~Q2)': 1, 'Class 2 (Q1~Q3)': 2, 'Class 3 (Q1~Q4)': 3}
+    df_chart['Label_Sort_Key'] = df_chart['Label'].map(label_sort_map)
+    df_chart.sort_values(by=['Year', 'Label_Sort_Key'], inplace=True)
+    
+    labels = [f"{row['Year']} - {row['Label']}" for idx, row in df_chart.iterrows()]
+    values = df_chart['CAGR'].tolist()
+
+    # 막대 색상 결정 로직 (사용자 선택 그룹만 컬러, 나머지는 회색)
+    bar_colors = []
+    for label_str in df_chart['Label']:
+        if label_str == selected_group_label: # 사용자가 선택한 그룹에 해당하는 막대
+            if 'Class 0' in label_str:
+                bar_colors.append('#4CAF50')  
+            elif 'Class 1' in label_str:
+                bar_colors.append('#2196F3')  
+            elif 'Class 2' in label_str:
+                bar_colors.append('#FF9800')  
+            elif 'Class 3' in label_str:
+                bar_colors.append('#F44336')  
+            else: 
+                bar_colors.append('#9E9E9E') 
+        else: 
+            bar_colors.append('#CCCCCC') 
+    
+    fig = go.Figure(data=[
+        go.Bar(
+            x=labels,
+            y=values,
+            marker_color=bar_colors, 
+            text=[f'{val:.2f}%' if pd.notna(val) else 'N/A' for val in values], 
+            textposition='outside',
+            hovertemplate='<b>%{x}</b><br>평균 CAGR: %{y:.2f}%<extra></extra>'
+        )
+    ])
+    
+    fig.update_layout(
+        title="📊 백테스팅 결과: 연도별 투자성향 그룹별 상위 10개 종목 평균 CAGR",
+        xaxis_title="연도 - 투자성향 그룹",
+        yaxis_title="평균 CAGR (%)",
+        xaxis_tickangle=45,
+        height=600,
+        showlegend=False,
+        yaxis=dict(gridcolor='lightgray'),
+        plot_bgcolor='white',
+        margin=dict(t=80, b=120) 
+    )
+    
+    return fig
+
+# --- 백테스팅 로직을 포함하는 추천 종목 및 연도별 CAGR 계산 함수 ---
+@st.cache_data(ttl=3600) # 데이터 처리 결과를 캐싱하여 성능 향상 (1시간 TTL)
+def get_backtested_results_and_latest_recommendations(df_full_cached, investment_type_cached):
+    """
+    각 연도별, 각 조건 그룹별 상위 10개 종목을 찾고, 그들의 평균 CAGR을 계산합니다.
+    또한, 특정 investment_type에 해당하는 최신 연도의 추천 종목 목록을 반환합니다.
+    recommended_stocks는 이제 각 종목의 회사명과 CAGR을 포함하는 딕셔너리 리스트입니다.
+
+    반환:
+        - results_all_conditions (dict): {f"{year} - {label}": {'mean_cagr': float, 'recommended_stocks': list of dicts}} 형태
+        - latest_recommendations_for_type (pd.DataFrame): 사용자의 investment_type에 맞는 최신 연도 추천 종목
+    """
+    df_full = df_full_cached.copy()
+
+    investment_group_map = {
+        '안정형': 'Class 0 (Q1)', '안정추구형': 'Class 1 (Q1~Q2)', 
+        '위험중립형': 'Class 2 (Q1~Q3)', '적극투자형': 'Class 3 (Q1~Q4)', 
+        '공격투자형': 'Class 3 (Q1~Q4)',
+    }
+    
+    if '회계년도' not in df_full.columns:
         st.error("⚠️ 데이터에 '회계년도' 컬럼이 없습니다. 데이터 구조를 확인해주세요.")
-        return pd.DataFrame({'회계년도': [str(y) for y in range(2017, 2023)], '추천 펀드': 0.0})
+        return {}, pd.DataFrame(columns=['회사명', '거래소코드', 'CAGR', '연간변동성', 'target_class'])
 
-    # 최신 연도 기준으로 추천된 종목들의 고유 식별자(회사명)를 가져옵니다.
-    recommended_ids = recommended_df_latest_year['회사명'].unique()
+    df_full['회계년도'] = pd.to_numeric(df_full['회계년도'], errors='coerce').astype('Int64')
+    df_full.dropna(subset=['회계년도'], inplace=True) 
 
-    # 전체 데이터(df_full)에서 이 추천 종목들에 해당하는 과거 데이터를 필터링합니다.
-    df_recommended_historical = df_full[df_full['회사명'].isin(recommended_ids)].copy()
+    all_years = sorted(df_full['회계년도'].unique().tolist())
+    if not all_years:
+        st.warning("⚠️ '회계년도' 데이터가 유효하지 않아 백테스팅을 수행할 수 없습니다.")
+        return {}, pd.DataFrame(columns=['회사명', '거래소코드', 'CAGR', '연간변동성', 'target_class'])
 
-    # 대상 연도 범위
-    all_years = list(range(2017, 2023))
+    latest_year = all_years[-1]
 
-    # 각 연도별 추천 종목들의 CAGR 평균 계산
-    if df_recommended_historical.empty or 'CAGR' not in df_recommended_historical.columns:
-        # 추천 종목에 대한 과거 데이터가 없거나 CAGR 컬럼이 없는 경우
-        yearly_avg_cagr = pd.Series([0.0] * len(all_years), index=all_years)
-    else:
-        yearly_avg_cagr = df_recommended_historical.groupby('회계년도')['CAGR'].mean().reindex(all_years)
+    results_all_conditions = {} 
+    latest_recommendations_for_type = pd.DataFrame(columns=['회사명', '거래소코드', 'CAGR', '연간변동성', 'target_class']) 
 
-        # 추천 종목들의 모든 연도에 걸친 전체 CAGR 평균 계산 (결측치 대체용)
-        overall_avg_cagr_for_fill = df_recommended_historical['CAGR'].mean()
-        if pd.isna(overall_avg_cagr_for_fill):
-            overall_avg_cagr_for_fill = 0.0 # 혹은 적절한 기본값
+    company_name_col = None
+    possible_company_cols = ['회사명', '종목명', '회사', '종목', 'Company', 'Name']
+    for col in possible_company_cols:
+        if col in df_full.columns:
+            company_name_col = col
+            break
+    
+    if company_name_col is None:
+        st.error("⚠️ 회사명을 나타내는 컬럼을 찾을 수 없습니다. 가능한 컬럼명: " + ", ".join(possible_company_cols))
+        return {}, pd.DataFrame(columns=['회사명', '거래소코드', 'CAGR', '연간변동성', 'target_class'])
 
-        # 데이터가 없는 연도는 전체 평균 CAGR로 대체
-        yearly_avg_cagr = yearly_avg_cagr.fillna(overall_avg_cagr_for_fill)
 
-    # 결과를 DataFrame으로 변환하고 '회계년도'를 문자열로 변경 (그래프 x축 표시에 용이)
-    df_yearly_cagr = yearly_avg_cagr.reset_index()
-    df_yearly_cagr.columns = ['회계년도', '추천 펀드']
-    df_yearly_cagr['회계년도'] = df_yearly_cagr['회계년도'].astype(str)
+    conditions_definitions = {
+        'Class 0 (Q1)': (lambda df_y: (df_y['target_class'] == 0) & (df_y['vol_quartile'] == 1)),
+        'Class 1 (Q1~Q2)': (lambda df_y: (df_y['target_class'].isin([0, 1])) & (df_y['vol_quartile'].isin([1, 2]))),
+        'Class 2 (Q1~Q3)': (lambda df_y: (df_y['target_class'].isin([0, 1, 2])) & (df_y['vol_quartile'].isin([1, 2, 3]))),
+        'Class 3 (Q1~Q4)': (lambda df_y: (df_y['target_class'].isin([0, 1, 2, 3])) & (df_y['vol_quartile'].isin([1, 2, 3, 4]))),
+    }
 
-    return df_yearly_cagr
+    for year in all_years:
+        df_year = df_full[df_full['회계년도'] == year].copy()
 
-# --- 2. 꺾은선 그래프 표현 함수 ---
-def create_benchmark_chart(df_recommended_yearly_cagr):
+        required_cols_for_processing = ['target_class', 'vol_quartile', 'CAGR', '거래소코드', '연간변동성'] 
+        if company_name_col:
+            required_cols_for_processing.append(company_name_col)
+
+        # 필수 컬럼이 하나라도 누락된 연도는 건너뛰고 빈 결과로 채움
+        if not all(col in df_year.columns for col in required_cols_for_processing):
+            for label in conditions_definitions.keys():
+                key = f"{year} - {label}"
+                results_all_conditions[key] = {'mean_cagr': 0.0, 'recommended_stocks': []} 
+            continue 
+
+        for label, condition_func in conditions_definitions.items():
+            key = f"{year} - {label}"
+            
+            condition_mask = condition_func(df_year)
+            filtered_df = df_year[condition_mask]
+            
+            mean_cagr = 0.0
+            top10_stocks_details = [] 
+            current_top10_cagr_df = pd.DataFrame(columns=['회사명', '거래소코드', 'CAGR', '연간변동성', 'target_class']) 
+
+            if not filtered_df.empty:
+                filtered_df.loc[:, 'CAGR'] = pd.to_numeric(filtered_df['CAGR'], errors='coerce')
+                
+                # '회사명'과 'CAGR' 컬럼이 모두 존재하며 유효한 데이터가 있는 경우만 처리
+                if company_name_col in filtered_df.columns and 'CAGR' in filtered_df.columns and not filtered_df.dropna(subset=[company_name_col, 'CAGR']).empty:
+                    current_top10_cagr_df = filtered_df.sort_values(by='CAGR', ascending=False, na_position='last').head(10)
+                    
+                    mean_cagr = current_top10_cagr_df['CAGR'].mean()
+                    if pd.isna(mean_cagr):
+                        mean_cagr = 0.0
+                    
+                    # 회사명과 CAGR을 포함하는 딕셔너리 리스트 생성
+                    # 회사명 컬럼 이름을 '회사명'으로 통일하여 to_dict에 전달
+                    temp_df_for_details_conversion = current_top10_cagr_df[[company_name_col, 'CAGR']].copy()
+                    if company_name_col != '회사명':
+                        temp_df_for_details_conversion.rename(columns={company_name_col: '회사명'}, inplace=True)
+                    
+                    # NaN 값이 있는 행은 드롭하여 깨끗한 데이터만 남김 (회사명, CAGR 둘 다 유효한 경우)
+                    top10_stocks_details = temp_df_for_details_conversion.dropna(subset=['회사명', 'CAGR']).to_dict(orient='records')
+                else: # 회사명이나 CAGR 컬럼이 없거나, 유효한 데이터가 하나도 없는 경우
+                    top10_stocks_details = []
+                    mean_cagr = 0.0 # 계산 불가
+            
+            results_all_conditions[key] = {
+                'mean_cagr': mean_cagr,
+                'recommended_stocks': top10_stocks_details 
+            }
+
+            # 최신 연도 추천 종목을 저장하는 부분은 이미 잘 되어있었음
+            if year == latest_year and label == investment_group_map.get(investment_type_cached):
+                cols_for_latest_rec = ['회사명', '거래소코드', 'CAGR', '연간변동성', 'target_class']
+                # current_top10_cagr_df가 비어있을 수 있으므로 빈 DataFrame으로 기본값 설정
+                if current_top10_cagr_df.empty:
+                    latest_recommendations_for_type = pd.DataFrame(columns=cols_for_latest_rec)
+                else:
+                    latest_recommendations_for_type = current_top10_cagr_df[[col for col in cols_for_latest_rec if col in current_top10_cagr_df.columns]].copy()
+                    if company_name_col != '회사명' and company_name_col in latest_recommendations_for_type.columns:
+                        latest_recommendations_for_type.rename(columns={company_name_col: '회사명'}, inplace=True)
+    
+    return results_all_conditions, latest_recommendations_for_type
+
+
+# --- 벤치마크 꺾은선 그래프 표현 함수 (수정 없음) ---
+# df_recommended_yearly_cagr은 사용자의 투자성향에 맞는 데이터만 포함한 DataFrame입니다.
+def create_benchmark_chart(df_recommended_yearly_cagr, investment_type): 
     """
     추천 펀드의 연도별 CAGR 평균과 벤치마크를 비교하는 차트를 생성합니다.
+    모든 데이터는 꺾은선으로 표시하며, 하나의 Y축을 공유합니다.
     """
-    # 벤치마크 데이터
+    if df_recommended_yearly_cagr.empty:
+        st.warning(f"⚠️ {investment_type} 유형에 대한 연도별 CAGR 데이터가 없어 차트를 생성할 수 없습니다.")
+        return go.Figure(), pd.DataFrame() 
+
     benchmark_data = {
         'year': ['2017', '2018', '2019', '2020', '2021', '2022'],
         '국고채 3년': [1.80, 2.10, 1.53, 0.99, 1.39, 3.20],
@@ -217,24 +369,22 @@ def create_benchmark_chart(df_recommended_yearly_cagr):
         'KOSPI': [21.78, -17.69, 9.34, 32.10, 1.13, -25.17],
         'KOSDAQ': [26.32, -16.84, 0.07, 43.68, 5.77, -34.55]
     }
-    
     df_benchmark = pd.DataFrame(benchmark_data)
     
-    # Plotly 차트 생성
     fig = go.Figure()
     
-    # 추천 펀드 연도별 CAGR (다이아몬드 마커, 굵은 선으로 강조)
+    # 1. 추천 펀드 CAGR (꺾은선 그래프)
     fig.add_trace(go.Scatter(
         x=df_recommended_yearly_cagr['회계년도'],
-        y=df_recommended_yearly_cagr['추천 펀드'],
-        mode='lines+markers',
-        name='추천 펀드 (연도별 CAGR)',
-        line=dict(color='#FF6B35', width=4), # 굵은 선
-        marker=dict(symbol='diamond', size=10), # 다이아몬드 마커
-        hovertemplate='<b>연도:</b> %{x}<br><b>추천 펀드 CAGR:</b> %{y:.2f}%<extra></extra>' # 호버 효과
+        y=df_recommended_yearly_cagr['추천 펀드'], 
+        mode='lines+markers', 
+        name=f'{investment_type} 추천 펀드',
+        line=dict(color='#FF6B35', width=4), 
+        marker=dict(symbol='diamond', size=10),
+        hovertemplate='<b>연도:</b> %{x}<br><b>추천 펀드 CAGR:</b> %{y:.2f}%<extra></extra>'
     ))
     
-    # 주요 벤치마크들 (KOSPI, KOSDAQ, 국고채 3년)
+    # 2. 벤치마크들 (꺾은선 그래프, 컬러 유지)
     colors = {
         '국고채 3년': '#4CAF50',
         'KOSPI': '#2196F3',
@@ -247,17 +397,17 @@ def create_benchmark_chart(df_recommended_yearly_cagr):
             y=df_benchmark[col],
             mode='lines+markers',
             name=col,
-            line=dict(color=color, width=2),
+            line=dict(color=color, width=2), 
             marker=dict(size=6),
-            hovertemplate=f'<b>연도:</b> %{{x}}<br><b>{col} 수익률:</b> %{{y:.2f}}%<extra></extra>' # 호버 효과
+            hovertemplate=f'<b>연도:</b> %{{x}}<br><b>{col} 수익률:</b> %{{y:.2f}}%<extra></extra>'
         ))
     
-    # 레이아웃 설정
+    # 레이아웃 설정 (모든 선들이 하나의 Y축을 공유하며, 자동으로 최적의 스케일이 설정됩니다.)
     fig.update_layout(
-        title="📈 추천 펀드 vs 벤치마크 수익률 비교",
+        title=f"📈 {investment_type} 유형 추천 펀드 vs 벤치마크 수익률 비교", 
         xaxis_title="연도",
-        yaxis_title="수익률 (%)",
-        hovermode='x unified', # 마우스를 올리면 해당 연도의 모든 정보가 표시됨
+        yaxis_title="수익률 (%)", 
+        hovermode='x unified',
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -265,10 +415,19 @@ def create_benchmark_chart(df_recommended_yearly_cagr):
             xanchor="right",
             x=1
         ),
-        height=500
+        height=450, 
+        yaxis=dict(
+            side='left',
+            showgrid=True,
+            gridcolor='lightgray',
+            autorange=True, 
+            rangemode='tozero' 
+        ),
+        plot_bgcolor='white'
     )
     
     return fig, df_benchmark
+
 
 # --- 페이지 시작 ---
 st.title("💰 투자성향 맞춤 추천 펀드")
@@ -276,7 +435,7 @@ st.title("💰 투자성향 맞춤 추천 펀드")
 investment_type = st.session_state.get('investment_type', '위험중립형')
 
 st.markdown(f"### 🎉 회원님의 투자성향은 **<span style='color: #4CAF50;'>{investment_type}</span>** 입니다!", unsafe_allow_html=True)
-st.write(f"아래는 **{investment_type}** 투자 성향에 맞춰 엄선된 펀드형 추천 포트폴리오입니다.")
+st.write(f"아래는 **{investment_type}** 투자 성향에 맞춰 백테스팅된 펀드형 추천 포트폴리오의 결과입니다.")
 st.markdown("---")
 
 # 데이터 로드
@@ -286,23 +445,38 @@ if df_full.empty:
     st.warning("데이터 로드에 실패했거나 처리할 종목이 없습니다.")
     st.stop()
 
-# --- 상태 초기화 ---
+if '연간변동성' in df_full.columns:
+    df_full['연간변동성'] = pd.to_numeric(df_full['연간변동성'], errors='coerce')
+    df_full.dropna(subset=['연간변동성'], inplace=True)
+    
+    if not df_full['연간변동성'].empty and df_full['연간변동성'].nunique() >= 4:
+        df_full['vol_quartile'] = pd.qcut(df_full['연간변동성'], q=4, labels=[1, 2, 3, 4], duplicates='drop')
+        df_full['vol_quartile'] = df_full['vol_quartile'].astype(int)
+    else:
+        st.warning("⚠️ '연간변동성' 데이터가 충분하지 않아 분위수(vol_quartile)를 계산할 수 없습니다. 분석이 제한될 수 있습니다.")
+        df_full['vol_quartile'] = 1 
+else:
+    st.error("⚠️ 데이터에 '연간변동성' 컬럼이 없습니다. 데이터 구조를 확인해주세요.")
+    st.stop()
+
+if 'target_class' not in df_full.columns:
+    st.error("⚠️ 데이터에 'target_class' 컬럼이 없습니다. 데이터 구조를 확인해주세요.")
+    st.stop()
+
+
+# --- 상태 초기화 (이전과 동일) ---
 if 'animation_stage' not in st.session_state:
-    st.session_state.animation_stage = 'initial'  # initial -> animating -> completed
+    st.session_state.animation_stage = 'initial'  
 
 # 단계별 처리
 if st.session_state.animation_stage == 'initial':
-    # 초기 상태: 선물 상자 표시
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center;'>✨ 지금 바로 회원님께 맞는 추천 펀드를 확인하세요! ✨</h3>", unsafe_allow_html=True)
-    
-    # 선물 상자 컨테이너
     st.markdown("""
         <div class='gift-container'>
             <div style='font-size: 120px;'>🎁</div>
         </div>
     """, unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("🎁 추천 펀드 공개하기", type="primary", use_container_width=True):
@@ -311,12 +485,9 @@ if st.session_state.animation_stage == 'initial':
     st.markdown("</div>", unsafe_allow_html=True)
 
 elif st.session_state.animation_stage == 'animating':
-    # 애니메이션 상태: 선물 상자가 열리는 효과만 표시 (제목/설명은 그대로)
     st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center;'>✨ 지금 바로 회원님께 맞는 추천 펀드를 확인하세요! ✨</h3>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #666;'>선물 상자를 열고 있어요...</p>", unsafe_allow_html=True)
-    
-    # 선물 상자 열리는 애니메이션과 반짝이만 표시
     st.markdown("""
         <div class='gift-container'>
             <div class='opening-gift-box' style='font-size: 120px;'>🎁</div>
@@ -331,53 +502,68 @@ elif st.session_state.animation_stage == 'animating':
     """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
-    # 펀드 데이터 로드 (애니메이션 중에 미리 준비)
-    if 'recommended_fund_stocks' not in st.session_state:
-        st.session_state.recommended_fund_stocks = get_recommended_stocks(df_full, investment_type)
+    if 'backtest_results_all_conditions' not in st.session_state or 'recommended_fund_stocks_latest' not in st.session_state:
+        st.session_state.backtest_results_all_conditions, st.session_state.recommended_fund_stocks_latest = \
+            get_backtested_results_and_latest_recommendations(df_full, investment_type)
     
-    # 애니메이션 시간 대기
-    time.sleep(2.5)  # 선물상자 열리는 애니메이션 시간
-    
-    # 풍선 애니메이션
+    time.sleep(2.5)
     st.balloons()
     
-    # 다음 단계로 이동
     st.session_state.animation_stage = 'completed'
     st.rerun()
 
 else:  # animation_stage == 'completed'
-    # 완료 상태: 펀드 정보 표시
     st.markdown("<div class='slide-up'>", unsafe_allow_html=True)
     
-    recommended_df_latest_year = st.session_state.recommended_fund_stocks
+    backtest_results_all_conditions = st.session_state.get('backtest_results_all_conditions', {})
+    recommended_df_latest_year = st.session_state.get('recommended_fund_stocks_latest', pd.DataFrame())
 
+    investment_group_map = {
+        '안정형': 'Class 0 (Q1)', '안정추구형': 'Class 1 (Q1~Q2)', 
+        '위험중립형': 'Class 2 (Q1~Q3)', '적극투자형': 'Class 3 (Q1~Q4)', 
+        '공격투자형': 'Class 3 (Q1~Q4)',
+    }
+    selected_group_label = investment_group_map.get(investment_type, 'Class 2 (Q1~Q3)')
+
+    # Move calculations for metrics here, as they are needed before the performance summary
+    yearly_cagrs_for_metrics = [
+        data['mean_cagr'] 
+        for key, data in backtest_results_all_conditions.items() 
+        if selected_group_label in key 
+    ]
+    overall_avg_cagr_recommended = pd.Series(yearly_cagrs_for_metrics).mean() if yearly_cagrs_for_metrics else 0.0
+    if pd.isna(overall_avg_cagr_recommended):
+        overall_avg_cagr_recommended = 0.0
+
+    # `recommended_df_latest_year`가 비어있지 않은 경우에만 상세 정보 표시
     if not recommended_df_latest_year.empty:
-        # --- 성과 요약 ---
-        st.subheader("📊 추천 펀드 성과 요약")
+        # --- 성과 요약 --- (FIRST)
+        st.subheader(f"📊 {investment_type} 유형 추천 펀드 성과 요약")
         
-        # 포트폴리오 성과 계산 (최신 연도 기준)
-        average_excess_return = recommended_df_latest_year['초과수익률_apply'].mean() if '초과수익률_apply' in recommended_df_latest_year.columns else 0
         average_volatility = recommended_df_latest_year['연간변동성'].mean() if '연간변동성' in recommended_df_latest_year.columns else 0
 
-        # 연도별 추천 펀드 CAGR 계산
-        df_recommended_yearly_cagr = calculate_yearly_recommended_cagr(df_full, recommended_df_latest_year)
-        overall_avg_cagr_recommended = df_recommended_yearly_cagr['추천 펀드'].mean() # 6년간 평균 CAGR
-
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2) 
         with col1:
-            st.metric(label="평균 초과수익률 (vs 국고채)", value=f"{average_excess_return:.2f} %p")
+            st.metric(label=f"평균 연간복리수익률 ({len(yearly_cagrs_for_metrics)}년간 CAGR)", value=f"{overall_avg_cagr_recommended:.2f} %")
         with col2:
-            st.metric(label="평균 연간복리수익률 (6년간 CAGR)", value=f"{overall_avg_cagr_recommended:.2f} %")
-        with col3:
-            st.metric(label="평균 연간변동성", value=f"{average_volatility:.2f} %")
+            st.metric(label="평균 연간변동성 (최신 추천 종목 기준)", value=f"{average_volatility:.2f} %")
         
-        st.info(f"💡 이 펀드는 회원님의 '{investment_type}' 성향에 맞춰, {df_full['회계년도'].max()}년 데이터 기준 '연간변동성'이 {investment_type} 기준에 부합하며 'CAGR'이 높은 상위 10개 종목으로 구성되었습니다.")
+        st.info(f"💡 이 펀드는 회원님의 '{investment_type}' 성향에 맞춰, 백테스팅된 **'{selected_group_label}'** 조건 그룹의 연도별 '연간변동성'과 'target_class' 기준에 부합하며 'CAGR'이 높은 상위 10개 종목으로 구성된 포트폴리오의 결과입니다.")
         
-        # --- 벤치마크 비교 차트 추가 ---
-        st.markdown("---")
-        st.subheader("📈 벤치마크 대비 성과 비교")
+        st.markdown("---") 
+
+        # --- 벤치마크 비교 차트 (SECOND) --- (위치 변경 없음)
+        st.subheader(f"📈 {investment_type} 유형 추천 펀드 벤치마크 대비 성과 비교")
         
-        fig, benchmark_df = create_benchmark_chart(df_recommended_yearly_cagr)
+        # create_benchmark_chart 함수에 필요한 df_recommended_yearly_cagr 생성
+        df_recommended_yearly_cagr_for_benchmarking = pd.DataFrame([
+            {'회계년도': year_key.split(' - ')[0], '추천 펀드': data['mean_cagr']}
+            for year_key, data in backtest_results_all_conditions.items()
+            if selected_group_label in year_key
+        ])
+
+        # create_benchmark_chart 함수 호출: 추천 펀드는 꺾은선, 벤치마크는 꺾은선 (모두 컬러, 단일 Y축)
+        fig, benchmark_df = create_benchmark_chart(df_recommended_yearly_cagr_for_benchmarking, investment_type)
         st.plotly_chart(fig, use_container_width=True)
         
         # 벤치마크 평균 수익률 계산 및 표시
@@ -412,77 +598,27 @@ else:  # animation_stage == 'completed'
         
         st.markdown("---") 
 
-        # --- 3. 상세 정보 테이블 추가 ---
-        st.subheader("📊 연도별 및 평균 성과 상세 정보")
+        # --- 1. 백테스팅 전체 결과 시각화 (THIRD) --- (위치 변경 없음)
+        st.subheader("📈 백테스팅 전체 결과") 
+        backtest_fig = create_backtest_results_chart(backtest_results_all_conditions, investment_type) # investment_type 전달
+        st.plotly_chart(backtest_fig, use_container_width=True)
 
-        # 테이블을 위한 데이터 결합
-        df_combined_table = df_recommended_yearly_cagr.set_index('회계년도')
-        df_combined_table.index.name = '연도'
 
-        # 벤치마크 데이터 중 필요한 컬럼만 선택 후 인덱스 설정
-        benchmark_table_cols = ['year', 'KOSPI', 'KOSDAQ', '국고채 3년']
-        df_benchmark_for_table = benchmark_df[benchmark_table_cols].set_index('year')
-        df_benchmark_for_table.index.name = '연도'
-
-        # 두 데이터프레임을 연도 기준으로 병합 (내부 조인하여 공통 연도만 유지)
-        df_final_detail_table = pd.concat([df_combined_table, df_benchmark_for_table], axis=1, join='inner')
-
-        # '6년간 평균' 행 추가
-        avg_row_data = df_final_detail_table.mean(numeric_only=True).to_frame().T
-        avg_row_data.index = ['6년간 평균']
-        df_final_detail_table = pd.concat([df_final_detail_table, avg_row_data])
-
-        # '추천 펀드와의 차이' 행 추가
-        delta_row = pd.DataFrame(index=['추천 펀드와의 차이'], columns=df_final_detail_table.columns)
-        delta_row['추천 펀드'] = '' # 추천 펀드 자체는 차이 없음
-        
-        # 6년간 평균 값 참조하여 델타 계산
-        fund_avg = df_final_detail_table.loc['6년간 평균', '추천 펀드']
-        for col in ['KOSPI', 'KOSDAQ', '국고채 3년']:
-            benchmark_avg = df_final_detail_table.loc['6년간 평균', col]
-            delta_row[col] = fund_avg - benchmark_avg
-
-        df_final_detail_table = pd.concat([df_final_detail_table, delta_row])
-
-        # 데이터 포맷팅 (소수점 두 자리 및 '%' 추가)
-        # 문자열이 아닌 숫자형 컬럼에만 적용
-        for col in df_final_detail_table.columns:
-            # '추천 펀드와의 차이' 행의 '추천 펀드' 컬럼은 문자열이므로 제외
-            if col == '추천 펀드' and '추천 펀드와의 차이' in df_final_detail_table.index:
-                continue
-            
-            # 숫자형 데이터에만 포맷팅 적용
-            df_final_detail_table[col] = df_final_detail_table[col].apply(
-                lambda x: f"{x:.2f}%" if pd.notna(x) and isinstance(x, (int, float)) else x
-            )
-
-        st.dataframe(df_final_detail_table, use_container_width=True)
-
-        st.markdown("---") 
-
-        st.subheader(f"✨ 추천 펀드 구성 종목 ({len(recommended_df_latest_year)}개)")
-        
-        # 추천 종목 목록을 테이블로 표시 (최신 연도 기준)
-        cols_to_display_rec = ['회사명', '거래소코드', 'CAGR', '연간변동성', '초과수익률_apply', 'target_class']
-        display_recommended_df = recommended_df_latest_year[[col for col in cols_to_display_rec if col in recommended_df_latest_year.columns]].copy()
-        display_recommended_df.columns = ['회사명', '거래소코드', 'CAGR (%)', '연간변동성 (%)', '초과수익률 (%)', '투자성향분류']
-        
-        st.dataframe(display_recommended_df, hide_index=True, use_container_width=True)
 
     else:
-        st.warning("회원님의 투자성향에 맞는 추천 종목을 찾지 못했습니다. 개별 종목 분석 페이지에서 직접 종목을 찾아보세요.")
+        st.warning(f"회원님의 '{investment_type}' 투자성향 ({selected_group_label})에 맞는 최신 추천 종목을 찾지 못했습니다. 데이터가 부족하거나 조건이 너무 엄격합니다. 개별 종목 분석 페이지에서 직접 종목을 찾아보세요.")
     
     st.markdown("---")
     st.subheader("📋 다음 단계")
 
-    # 다음 페이지로 이동 버튼
     col_survey_btn, col_stock_btn = st.columns(2) 
     with col_survey_btn:
         if st.button("🏠 설문 페이지로 돌아가기", use_container_width=True):
-            # 애니메이션 상태도 초기화
             st.session_state.animation_stage = 'initial'
-            if 'recommended_fund_stocks' in st.session_state:
-                del st.session_state.recommended_fund_stocks
+            if 'backtest_results_all_conditions' in st.session_state:
+                del st.session_state.backtest_results_all_conditions
+            if 'recommended_fund_stocks_latest' in st.session_state:
+                del st.session_state.recommended_fund_stocks_latest
             reset_survey_state()
             st.switch_page("pages/01_questionnaire.py")
     
