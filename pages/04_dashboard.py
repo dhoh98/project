@@ -164,6 +164,14 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
         '위험중립형': 'Class 2 (Q1~Q3)', '적극투자형': 'Class 3 (Q1~Q4)', 
         '공격투자형': 'Class 3 (Q1~Q4)',
     }
+    # Class Label을 한글 투자자 성향으로 매핑
+    class_to_korean_map = {
+        'Class 0 (Q1)': '안정형',
+        'Class 1 (Q1~Q2)': '안정추구형',
+        'Class 2 (Q1~Q3)': '위험중립형',
+        'Class 3 (Q1~Q4)': '적극투자형' # 공격투자형도 여기에 포함되지만, 레이블은 적극투자형으로 통일
+    }
+
     selected_group_label = investment_group_map.get(investment_type, 'Class 2 (Q1~Q3)')
 
     # 데이터 준비: 연도, 클래스 라벨, 평균 CAGR 추출 및 정렬
@@ -179,12 +187,13 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
     df_chart['Label_Sort_Key'] = df_chart['Label'].map(label_sort_map)
     df_chart.sort_values(by=['Year', 'Label_Sort_Key'], inplace=True)
     
-    labels = [f"{row['Year']} - {row['Label']}" for idx, row in df_chart.iterrows()]
+    # X축 레이블을 "년도투자자성향" 형식으로 변경 (하이픈 제거)
+    labels = [f"{row['Year']}{class_to_korean_map.get(row['Label'], row['Label'])}" for idx, row in df_chart.iterrows()] 
     values = df_chart['CAGR'].tolist()
 
     # 막대 색상 결정 로직 (사용자 선택 그룹만 컬러, 나머지는 회색)
     bar_colors = []
-    for label_str in df_chart['Label']:
+    for label_str in df_chart['Label']: # df_chart의 'Label' 컬럼 (Class 0 (Q1) 등의 원본 레이블) 사용
         if label_str == selected_group_label: # 사용자가 선택한 그룹에 해당하는 막대
             if 'Class 0' in label_str:
                 bar_colors.append('#4CAF50')  
@@ -201,20 +210,21 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
     
     fig = go.Figure(data=[
         go.Bar(
-            x=labels,
+            x=labels, 
             y=values,
             marker_color=bar_colors, 
             text=[f'{val:.2f}%' if pd.notna(val) else 'N/A' for val in values], 
             textposition='outside',
-            hovertemplate='<b>%{x}</b><br>평균 CAGR: %{y:.2f}%<extra></extra>'
+            hovertemplate='<b>%{x}</b><br>평균 CAGR: %{y:.2f}%<extra></extra>' 
         )
     ])
     
     fig.update_layout(
         title="📊 백테스팅 결과: 연도별 투자성향 그룹별 상위 10개 종목 평균 CAGR",
-        xaxis_title="연도 - 투자성향 그룹",
+        xaxis_title="연도 및 투자성향", 
         yaxis_title="평균 CAGR (%)",
-        xaxis_tickangle=45,
+        xaxis_tickangle=0, 
+        xaxis_tickfont=dict(size=13), 
         height=600,
         showlegend=False,
         yaxis=dict(gridcolor='lightgray'),
@@ -567,33 +577,35 @@ else:  # animation_stage == 'completed'
         st.plotly_chart(fig, use_container_width=True)
         
         # 벤치마크 평균 수익률 계산 및 표시
+        # 값들을 미리 계산
+        kospi_avg = benchmark_df['KOSPI'].mean()
+        kosdaq_avg = benchmark_df['KOSDAQ'].mean()
+        bond3y_avg = benchmark_df['국고채 3년'].mean()
+        
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            kospi_avg = benchmark_df['KOSPI'].mean()
+        with col1: # 추천 펀드 6년간 CAGR (가장 먼저 표시)
             st.metric(
-                label="KOSPI 6년간 평균",
-                value=f"{kospi_avg:.2f}%",
-                delta=f"{overall_avg_cagr_recommended - kospi_avg:.2f}%p"
+                label="추천 펀드 6년간 CAGR",
+                value=f"{overall_avg_cagr_recommended:.2f}%",
+                delta="기준"
             )
-        with col2:
-            kosdaq_avg = benchmark_df['KOSDAQ'].mean()
-            st.metric(
-                label="KOSDAQ 6년간 평균",
-                value=f"{kosdaq_avg:.2f}%",
-                delta=f"{overall_avg_cagr_recommended - kosdaq_avg:.2f}%p"
-            )
-        with col3:
-            bond3y_avg = benchmark_df['국고채 3년'].mean()
+        with col2: # 국고채 3년 6년간 평균
             st.metric(
                 label="국고채 3년 6년간 평균",
                 value=f"{bond3y_avg:.2f}%",
                 delta=f"{overall_avg_cagr_recommended - bond3y_avg:.2f}%p"
             )
-        with col4:
+        with col3: # KOSDAQ 6년간 평균
             st.metric(
-                label="추천 펀드 6년간 CAGR",
-                value=f"{overall_avg_cagr_recommended:.2f}%",
-                delta="기준"
+                label="KOSDAQ 6년간 평균",
+                value=f"{kosdaq_avg:.2f}%",
+                delta=f"{overall_avg_cagr_recommended - kosdaq_avg:.2f}%p"
+            )
+        with col4: # KOSPI 6년간 평균
+            st.metric(
+                label="KOSPI 6년간 평균",
+                value=f"{kospi_avg:.2f}%",
+                delta=f"{overall_avg_cagr_recommended - kospi_avg:.2f}%p"
             )
         
         st.markdown("---") 
@@ -602,8 +614,7 @@ else:  # animation_stage == 'completed'
         st.subheader("📈 백테스팅 전체 결과") 
         backtest_fig = create_backtest_results_chart(backtest_results_all_conditions, investment_type) # investment_type 전달
         st.plotly_chart(backtest_fig, use_container_width=True)
-
-
+        st.markdown("---") 
 
     else:
         st.warning(f"회원님의 '{investment_type}' 투자성향 ({selected_group_label})에 맞는 최신 추천 종목을 찾지 못했습니다. 데이터가 부족하거나 조건이 너무 엄격합니다. 개별 종목 분석 페이지에서 직접 종목을 찾아보세요.")
