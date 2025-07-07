@@ -1,7 +1,3 @@
-알겠습니다. 사용자님의 모든 최근 요청사항(초과수익률 제거, 2017년 이후 데이터 사용, `위험도` 계산 개선, 백테스팅 전체 결과 차트의 색상 강조/흑백 처리, 섹션 순서 변경, 연도별 상세 종목 테이블 및 최신 추천 종목 테이블 삭제)을 반영하여 `README.md` 파일을 최신 상태로 업데이트하겠습니다.
-
-특히, `04_dashboard.py` 페이지의 기능 설명을 가장 최신 상태에 맞춰 자세히 수정하겠습니다.
-
 ---
 
 # 📈 Investment Propensity Diagnosis & Custom Stock Recommendation Dashboard 📊
