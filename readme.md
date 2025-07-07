@@ -1,12 +1,8 @@
----
-
 # 📈 Investment Propensity Diagnosis & Custom Stock Recommendation Dashboard 📊
 ## 📊 투자성향 진단 및 맞춤형 종목 추천 대시보드
 ### URL : https://free-rider-beta.streamlit.app/
 
 *사용자의 투자 성향을 진단하고, 그 결과에 맞춰 맞춤형 펀드 추천 및 개별 종목 분석을 제공하는 다중 페이지 Streamlit 웹 애플리케이션입니다.*
-
----
 
 ## 🌟 주요 기능 (Key Features)
 
