@@ -169,12 +169,12 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
         '적극투자형': 'Class 2 (Q1~Q3)', 
         '공격투자형': 'Class 3 (Q1~Q4)',
     }
-    # Class Label을 한글 투자자 성향으로 매핑 (X축 레이블에 사용)
-    class_to_korean_map = {
-        'Class 0 (Q1)': '안정추구형', 
-        'Class 1 (Q1~Q2)': '위험중립형', 
-        'Class 2 (Q1~Q3)': '적극투자형', 
-        'Class 3 (Q1~Q4)': '공격투자형' 
+    # Class Label을 클래스 번호로 매핑 (X축 라벨에 사용)
+    class_to_number_map = {
+        'Class 0 (Q1)': '0', 
+        'Class 1 (Q1~Q2)': '1', 
+        'Class 2 (Q1~Q3)': '2', 
+        'Class 3 (Q1~Q4)': '3' 
     }
 
     selected_group_label_for_chart = investment_group_map_for_chart.get(investment_type, 'Class 2 (Q1~Q3)') # 사용자의 유형에 맞는 Class (예: Class 0 (Q1))
@@ -193,8 +193,8 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
     df_chart['Label_Sort_Key'] = df_chart['Label_Raw'].map(label_sort_map)
     df_chart.sort_values(by=['Year', 'Label_Sort_Key'], inplace=True)
     
-    # X축 레이블을 "년도투자자성향" 형식으로 변경 (하이픈 및 공백 제거)
-    labels = [f"{row['Year']}{class_to_korean_map.get(row['Label_Raw'], row['Label_Raw'])}" for idx, row in df_chart.iterrows()] 
+    # X축 라벨을 "년도/클래스번호" 형식으로 변경 (예: 2017/0, 2017/1, 2018/0...)
+    labels = [f"{row['Year']}/{class_to_number_map.get(row['Label_Raw'], '?')}" for idx, row in df_chart.iterrows()] 
     values = df_chart['CAGR'].tolist()
 
     # 막대 색상 결정 로직 (사용자 선택 그룹만 컬러, 나머지는 회색)
@@ -227,7 +227,7 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
     
     fig.update_layout(
         title="📊 백테스팅 결과: 연도별 투자성향 그룹별 상위 10개 종목 평균 CAGR",
-        xaxis_title="연도 및 투자성향", 
+        xaxis_title="연도/클래스", 
         yaxis_title="평균 CAGR (%)",
         xaxis_tickangle=0, 
         xaxis_tickfont=dict(size=13), 
