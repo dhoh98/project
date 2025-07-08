@@ -195,7 +195,8 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
     
     # X축 라벨을 "년도/클래스번호" 형식으로 변경 (예: 2017/0, 2017/1, 2018/0...)
     labels = [f"{row['Year']}/{class_to_number_map.get(row['Label_Raw'], '?')}" for idx, row in df_chart.iterrows()] 
-    values = df_chart['CAGR'].tolist()
+    # CAGR 값을 6으로 나누어 연평균으로 변환
+    values = [cagr / 6 if pd.notna(cagr) and cagr != 0 else 0.0 for cagr in df_chart['CAGR'].tolist()]
 
     # 막대 색상 결정 로직 (사용자 선택 그룹만 컬러, 나머지는 회색)
     bar_colors = []
@@ -226,9 +227,9 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
     ])
     
     fig.update_layout(
-        title="📊 백테스팅 결과: 연도별 투자성향 그룹별 상위 10개 종목 평균 CAGR",
+        title="📊 백테스팅 결과: 연도별 투자성향 그룹별 상위 10개 종목 연평균 CAGR",
         xaxis_title="연도/클래스", 
-        yaxis_title="평균 CAGR (%)",
+        yaxis_title="연평균 CAGR (%)",
         xaxis_tickangle=0, 
         xaxis_tickfont=dict(size=13), 
         height=600,
@@ -586,6 +587,9 @@ else:  # animation_stage == 'completed'
     overall_avg_cagr_recommended = pd.Series(yearly_cagrs_for_metrics).mean() if yearly_cagrs_for_metrics else 0.0
     if pd.isna(overall_avg_cagr_recommended):
         overall_avg_cagr_recommended = 0.0
+    
+    # 6년간 평균을 연평균으로 변환
+    annual_avg_cagr_recommended = overall_avg_cagr_recommended / 6 if overall_avg_cagr_recommended != 0 else 0.0
 
     # `recommended_df_latest_year`가 비어있지 않은 경우에만 상세 정보 표시
     if not recommended_df_latest_year.empty:
@@ -596,7 +600,7 @@ else:  # animation_stage == 'completed'
 
         col1, col2 = st.columns(2) 
         with col1:
-            st.metric(label=f"평균 연간복리수익률 ({len(yearly_cagrs_for_metrics)}년간 CAGR)", value=f"{overall_avg_cagr_recommended:.2f} %")
+            st.metric(label="평균 연간복리수익률", value=f"{annual_avg_cagr_recommended:.2f} %")
         with col2:
             st.metric(label="평균 연간변동성 (최신 추천 종목 기준)", value=f"{average_volatility:.2f} %")
         
@@ -627,27 +631,27 @@ else:  # animation_stage == 'completed'
         col1, col2, col3, col4 = st.columns(4)
         with col1: # 추천 펀드 6년간 CAGR (가장 먼저 표시)
             st.metric(
-                label="추천 펀드 6년간 CAGR",
-                value=f"{overall_avg_cagr_recommended:.2f}%",
+                label="추천 펀드 연평균 CAGR",
+                value=f"{annual_avg_cagr_recommended:.2f}%",
                 delta="기준"
             )
         with col2: # 국고채 3년 6년간 평균
             st.metric(
                 label="국고채 3년 6년간 평균",
                 value=f"{bond3y_avg:.2f}%",
-                delta=f"{overall_avg_cagr_recommended - bond3y_avg:.2f}%p"
+                delta=f"{annual_avg_cagr_recommended - bond3y_avg:.2f}%p"
             )
         with col3: # KOSDAQ 6년간 평균
             st.metric(
                 label="KOSDAQ 6년간 평균",
                 value=f"{kosdaq_avg:.2f}%",
-                delta=f"{overall_avg_cagr_recommended - kosdaq_avg:.2f}%p"
+                delta=f"{annual_avg_cagr_recommended - kosdaq_avg:.2f}%p"
             )
         with col4: # KOSPI 6년간 평균
             st.metric(
                 label="KOSPI 6년간 평균",
                 value=f"{kospi_avg:.2f}%",
-                delta=f"{overall_avg_cagr_recommended - kospi_avg:.2f}%p"
+                delta=f"{annual_avg_cagr_recommended - kospi_avg:.2f}%p"
             )
         
         st.markdown("---") 
