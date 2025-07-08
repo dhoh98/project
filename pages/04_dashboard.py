@@ -183,8 +183,10 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
     chart_data = []
     sorted_keys = sorted(backtest_results.keys()) 
     for key in sorted_keys:
-        year, label_raw = key.split(' - ') 
-        chart_data.append({'Year': year, 'Label_Raw': label_raw, 'CAGR': backtest_results[key]['mean_cagr']}) 
+        year, label_raw = key.split(' - ')
+        # Class 3을 제외하고 Class 0, 1, 2만 포함
+        if 'Class 3' not in label_raw:
+            chart_data.append({'Year': year, 'Label_Raw': label_raw, 'CAGR': backtest_results[key]['mean_cagr']}) 
     
     df_chart = pd.DataFrame(chart_data)
     
@@ -222,7 +224,7 @@ def create_backtest_results_chart(backtest_results, investment_type): # investme
             marker_color=bar_colors, 
             text=[f'{val:.2f}%' if pd.notna(val) else 'N/A' for val in values], 
             textposition='outside',
-            hovertemplate='<b>%{x}</b><br>평균 CAGR: %{y:.2f}%<extra></extra>' 
+            hovertemplate='<b>%{x}</b><br>연평균 CAGR: %{y:.2f}%<extra></extra>' 
         )
     ])
     
