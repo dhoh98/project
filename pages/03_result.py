@@ -255,6 +255,7 @@ def result_page():
 
     st.markdown("---")
 
+    # 안정형과 공격투자형 모두 대시보드 접근 제한
     if investment_type == "안정형":
         st.markdown("<h3 style='color: red; text-align: center;'>⚠️ 종목 추천 대상자가 아닙니다!</h3>", unsafe_allow_html=True)
         st.info("이 앱은 투자 상품 추천을 목적으로 하며, '안정형' 투자 성향에는 적합한 추천을 제공하지 않습니다.")
@@ -265,7 +266,28 @@ def result_page():
             if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True, type="primary"):
                 st.session_state.reset_survey_flag = True
                 st.switch_page("pages/01_questionnaire.py") 
+                
+    elif investment_type == "공격투자형":
+        st.markdown("<h3 style='color: #FF6B35; text-align: center;'>⚠️ 고위험 투자성향으로 인한 서비스 제한 안내</h3>", unsafe_allow_html=True)
+        st.warning("""
+        **회원님께서는 '공격투자형' 투자성향으로 분류되었습니다.**
+        
+        공격투자형은 매우 높은 위험 감수 성향을 나타내며, 이에 따라 저희 서비스에서 제공하는 일반적인 종목 추천이 회원님의 극단적인 위험 선호도와 맞지 않을 수 있습니다.
+        
+        **양해 말씀:**
+        - 본 서비스는 안정추구형~적극투자형 투자자를 위한 균형잡힌 포트폴리오 추천에 특화되어 있습니다
+        - 공격투자형 성향에 적합한 극고위험 상품 추천은 별도의 전문 상담이 필요합니다
+        - 보다 안전하고 체계적인 투자를 위해 설문을 다시 검토해보시기를 권장드립니다
+        """)
+        st.markdown("---")
+
+        col1 = st.columns(1)[0]
+        with col1:
+            if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True, type="primary"):
+                st.session_state.reset_survey_flag = True
+                st.switch_page("pages/01_questionnaire.py") 
     else:
+        # 안정추구형, 위험중립형, 적극투자형만 대시보드 접근 가능
         col1, col2 = st.columns(2)
         with col1:
             if st.button("↩️ 설문으로 돌아가 수정하기", use_container_width=True):
