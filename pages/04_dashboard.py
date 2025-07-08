@@ -637,19 +637,19 @@ else:  # animation_stage == 'completed'
             )
         with col2: # 국고채 3년 6년간 평균
             st.metric(
-                label="국고채 3년 6년간 평균",
+                label="국고채 3년 평균",
                 value=f"{bond3y_avg:.2f}%",
                 delta=f"{annual_avg_cagr_recommended - bond3y_avg:.2f}%p"
             )
         with col3: # KOSDAQ 6년간 평균
             st.metric(
-                label="KOSDAQ 6년간 평균",
+                label="KOSDAQ 연평균",
                 value=f"{kosdaq_avg:.2f}%",
                 delta=f"{annual_avg_cagr_recommended - kosdaq_avg:.2f}%p"
             )
         with col4: # KOSPI 6년간 평균
             st.metric(
-                label="KOSPI 6년간 평균",
+                label="KOSPI 연평균",
                 value=f"{kospi_avg:.2f}%",
                 delta=f"{annual_avg_cagr_recommended - kospi_avg:.2f}%p"
             )
